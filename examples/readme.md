@@ -7,7 +7,7 @@
 
 ## ⚠️ 当前不可编译
 
-头文件已就位（`hp/prime.h`、`hp/stdbool.h`、`rt/hp_*.h`），但运行时**实现**与
+头文件已就位（`toolchain/sdk/prime.h`、`stdbool.h`；`rt/hp_*.h`），但运行时**实现**与
 `calc/main.py` 的依赖大量缺失，因此示例无法构建——见 [../STATUS.md](../STATUS.md)。
 
 ## 清单

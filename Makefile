@@ -16,6 +16,8 @@
 TOPDIR  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # 所有构建产物集中于此（此前散落在仓库根目录，难以分辨）
 OUTDIR  := $(TOPDIR)/prebuilt
+# C 核心库（用户程序头文件、链接脚本、SVC 包装）统一在 toolchain/sdk/
+SDK     ?= $(TOPDIR)/../toolchain/sdk
 TCCSRC  := $(TOPDIR)/src/tinycc-mob
 HOSTTCC := $(TOPDIR)/host-tcc/bin/tcc
 
@@ -205,7 +207,7 @@ deploy: $(OUTDIR)/tcc.elf $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_ae
 	@rm -f ../primetcc.hpappdir/hp_rt.c ../primetcc.hpappdir/hp_gfx.c \
 	    ../primetcc.hpappdir/hp_input.c ../primetcc.hpappdir/hp_math.c \
 	    ../primetcc.hpappdir/hp_string.c
-	@cp $(OUTDIR)/tcc.elf calc/main.py hp/prime.h hp/stdbool.h $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o $(OUTDIR)/rt_math.o \
+	@cp $(OUTDIR)/tcc.elf calc/main.py $(SDK)/prime.h $(SDK)/stdbool.h $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o $(OUTDIR)/rt_math.o \
 	    rt/hp_gfx.h rt/hp_input.h rt/hp_math.h rt/hp_string.h rt/hp_fonts.h \
 	    rt/hp_sys.h rt/hp_fixmath.h rt/hp_random.h rt/hp_codec.h rt/hp_gui.h \
 	    rt/hp_icall.h rt/hp_image.h \

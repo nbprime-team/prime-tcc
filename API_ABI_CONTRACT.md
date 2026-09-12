@@ -13,7 +13,7 @@
 
 | 文件 | 内容 |
 |---|---|
-| [`hp/prime.h`](hp/prime.h) | 基础运行时：输出、内存、字符串、`qsort/bsearch` |
+| [`../toolchain/sdk/prime.h`](../toolchain/sdk/prime.h) | 基础运行时：输出、内存、字符串、`qsort/bsearch` |
 | [`rt/hp_gfx.h`](rt/hp_gfx.h) | 绘图（framebuffer、图元、文本、GROB） |
 | [`rt/hp_input.h`](rt/hp_input.h) | 键盘/触摸事件与输入钩子 |
 | [`rt/hp_math.h`](rt/hp_math.h) | openlibm 数学函数 |
@@ -58,7 +58,7 @@
 
 ### 4.1 `size_t` 跟随宿主编译器
 
-原实现把 `size_t` 硬编码为 `unsigned int`（3 处：`hp/prime.h`、`rt/hp_string.h`、
+原实现把 `size_t` 硬编码为 `unsigned int`（3 处：`toolchain/sdk/prime.h`、`rt/hp_string.h`、
 `rt/hp_sys.h`）。在 PC 上会与内建的 `size_t`（64 位）冲突，产生
 `-Wbuiltin-declaration-mismatch` 警告。
 

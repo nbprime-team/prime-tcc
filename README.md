@@ -25,8 +25,8 @@ make: *** 没有规则可制作目标“obj/tcc.o”，由“tcc.elf” 需求�
 prime-tcc/
 ├── README.md / STATUS.md / API.md / API_ABI_CONTRACT.md / LICENSE
 ├── Makefile                    构建（主机侧交叉编译）
-├── hp/                         TCC 本体的 Prime 侧支撑
-│   ├── prime.h  stdbool.h      [已就位] 用户程序头文件
+│                               C 核心库经 `SDK ?= ../toolchain/sdk` 直接引用
+├── hp/                         TCC 本体的 Prime 侧支撑（用户程序头文件已移至 toolchain/sdk）
 │   ├── hp_libc.h/.c  hp_vsnprintf.c  hp_svc.s  include/   [缺失]
 ├── rt/                         用户程序运行时（预编译进 rt_core.o）
 │   ├── [已就位] 5 个 .c：hp_rt/hp_gfx/hp_input/hp_math/hp_string

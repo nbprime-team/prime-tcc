@@ -63,7 +63,7 @@
 
 | # | 位置 | 现象 |
 |---|---|---|
-| A1 | `hp/prime.h` 声明 `hp_printf8`；`rt/hp_rt.c:195` 只定义 4 参 `printf` | 变参宏派发目标无实现 → `grep -rn hp_printf8 rt/*.c` 无输出 |
+| A1 | `toolchain/sdk/prime.h` 声明 `hp_printf8`；`rt/hp_rt.c:195` 只定义 4 参 `printf` | 变参宏派发目标无实现 → `grep -rn hp_printf8 rt/*.c` 无输出 |
 | A2 | `rt/hp_gfx.h` 声明 `hp_pixel_a`/`hp_triangle`/`hp_fill_triangle`/`hp_grob_w`/`hp_grob_h`/`hp_target_w`/`hp_target_h`/`hp_blit*` | `hp_gfx.c` 实现数为 0 |
 | A3 | `rt/hp_string.h` 声明 `ftoa`/`dtoa`/`strtod`/`atof` | `hp_string.c` 实现数为 0 |
 | A4 | `Makefile` 用 `-Wl,-e,hp_entry` | `hp_entry`、`g_hp_input` 全仓零出现 |
@@ -71,7 +71,7 @@
 | B2 | `ftoa` 的 `dec` | `rt/hp_string.h:68` 说 clamp 0..15；`API.md:169` 说 `dec<0` 为自动模式 |
 | B3 | 等宽字体名 | `rt/hp_fonts.h:6` 说 Cascadia Code；同文件 `:44` 与 `API.md:83` 说 Unifont |
 | B4 | `stdbool.h` | **本轮已随上游更新补齐**（`hp/stdbool.h` 已就位）✅ |
-| C1 | `NULL` 在 `hp/prime.h`、`rt/hp_string.h`、`rt/hp_gui.h` 三处重复定义 | 替换文本相同，合法；仅登记 |
+| C1 | `NULL` 在 `toolchain/sdk/prime.h`、`rt/hp_string.h`、`rt/hp_gui.h` 三处重复定义 | 替换文本相同，合法；仅登记 |
 | D1 | 示例 `printf` 实参个数不一（`hello.c` 0–1 个、`queens.c` 满 8 个） | 宏派发可接受；仅登记 |
 
 > 派生自上游的 **`prime-tcc/README.md`「固件接口」小节**在原文中就中断了（只有一句
