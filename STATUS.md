@@ -1,6 +1,6 @@
 # prime-tcc 状态与未完成事项
 
-> ⚠️ **AI 生成 / 辅助创作：DeepSeek V4.1 Flash**（未人工审查）
+> ⚠️ **AI 生成 / 辅助创作：DeepSeek V4.1 Flash**（LCD 已人工审查，请联系 SQY 二次审查）
 
 本文件是 `prime-tcc` **未完成事项的唯一集中处**：缺失源码、源码疑误、补全步骤、待决策。
 （已合并原先分散的 `STATUS.md`、`STATUS.md`、`STATUS.md` 与四个目录级 `MISSING.md`。）

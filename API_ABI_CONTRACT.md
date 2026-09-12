@@ -1,6 +1,6 @@
 # TCC 与 PC gcc 的 C API/ABI 统一契约
 
-> ⚠️ **AI 生成 / 辅助创作：DeepSeek V4.1 Flash**（未人工审查）
+> ⚠️ **AI 生成 / 辅助创作：DeepSeek V4.1 Flash**（LCD 已人工审查，请联系 SQY 二次审查）
 
 本文件定义**同一份用户 C 代码**在两种环境下必须遵守的统一约定：
 
