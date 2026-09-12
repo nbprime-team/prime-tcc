@@ -114,7 +114,7 @@ arm-none-eabi-gcc -c -mcpu=arm926ej-s -marm -mfloat-abi=soft -ffreestanding \
 | PC gcc 编译 | **通过，0 警告**（改动前有 8+ 条 `-Wbuiltin-declaration-mismatch`） |
 | ARM gcc 编译 | 通过 |
 | ARM 侧改动前后目标文件 | **字节完全一致**（`cmp` 无输出）——证明改动对目标环境零影响 |
-| `app-collection/examples/prime-code` 示例 | `prime.h` 同步后重建，产物（剥符号表）与上游提交版**字节一致**（24644 字节） |
+| `app-collection/staging/prime-code` 示例 | `prime.h` 同步后重建，产物（剥符号表）与上游提交版**字节一致**（24644 字节） |
 
 可复现的接口示例见 [../toolchain/examples/api-probe/](../toolchain/examples/api-probe/)。
 

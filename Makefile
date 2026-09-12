@@ -3,8 +3,8 @@
 # primetcc -- TCC (TinyCC) ported to the HP Prime G1 calculator
 #
 # Targets:
-#   make all      -> tcc.elf (TCC compiled for ARMv5TEJ, runs on the calc)
-#                    rt_svc.o rt_aeabi.o (runtime for TCC-compiled programs)
+#   make all      -> $(OUTDIR)/tcc.elf (TCC compiled for ARMv5TEJ, runs on the calc)
+#                    $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o (runtime for TCC-compiled programs)
 #   make host     -> native (aarch64) TCC for host-side experiments
 #   make test     -> run host-side tests (requires tests/emu_arm.py)
 #   make clean
@@ -14,6 +14,8 @@
 # Target:    ARM926EJ-S (ARMv5TEJ), soft-float, freestanding, -fPIC -pie
 
 TOPDIR  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+# 所有构建产物集中于此（此前散落在仓库根目录，难以分辨）
+OUTDIR  := $(TOPDIR)/prebuilt
 TCCSRC  := $(TOPDIR)/src/tinycc-mob
 HOSTTCC := $(TOPDIR)/host-tcc/bin/tcc
 
@@ -55,25 +57,25 @@ ASFLAGS := -mcpu=arm926ej-s
 # #includes tccpp.c/tccgen.c/tccelf.c/tccasm.c/tccdbg.c/tccrun.c and the
 # selected backend (arm-*.c).  So a single object contains the compiler.
 TCC_SRCS := tcc.c
-TCC_OBJS := $(patsubst %.c,obj/%.o,$(TCC_SRCS))
+TCC_OBJS := $(patsubst %.c,$(OUTDIR)/obj/%.o,$(TCC_SRCS))
 
-HP_OBJS := obj/hp_svc.o obj/hp_libc.o obj/hp_vsnprintf.o obj/hp_input_svc.o
+HP_OBJS := $(OUTDIR)/obj/hp_svc.o $(OUTDIR)/obj/hp_libc.o $(OUTDIR)/obj/hp_vsnprintf.o $(OUTDIR)/obj/hp_input_svc.o
 
-# PROBE=<file.c> links an extra probe object into tcc.elf (debug rounds).
+# PROBE=<file.c> links an extra probe object into $(OUTDIR)/tcc.elf (debug rounds).
 # Use with HP_SVC=hp/hp_svc_test5.s (probe crt0 that bl hp_probe5).
 PROBE ?=
 ifneq ($(PROBE),)
-PROBE_OBJS := obj/probe.o
-obj/probe.o: $(PROBE) hp/hp_libc.h | obj
+PROBE_OBJS := $(OUTDIR)/obj/probe.o
+$(OUTDIR)/obj/probe.o: $(PROBE) hp/hp_libc.h | $(OUTDIR)/obj
 	$(ARMCC) $(CFLAGS) -c $(PROBE) -o $@
 else
 PROBE_OBJS :=
 endif
 
-all: tcc.elf rt_core.o rt_math.o rt_svc.o rt_aeabi.o
+all: $(OUTDIR)/tcc.elf $(OUTDIR)/rt_core.o $(OUTDIR)/rt_math.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o
 
 # ---------- TCC binary for the calculator ----------
-tcc.elf: $(TCC_OBJS) $(HP_OBJS) $(PROBE_OBJS)
+$(OUTDIR)/tcc.elf: $(TCC_OBJS) $(HP_OBJS) $(PROBE_OBJS)
 	$(ARMCC) -nostdlib -fPIC -pie -Wl,-e,_start \
 	    $(TCC_OBJS) $(HP_OBJS) $(PROBE_OBJS) -lgcc -o $@
 	@echo "==> $@ built.  Checking shape:"
@@ -81,29 +83,29 @@ tcc.elf: $(TCC_OBJS) $(HP_OBJS) $(PROBE_OBJS)
 	@readelf -l $@ | grep -E 'LOAD|DYNAMIC'
 	@readelf -r $@ | awk '{print $$3}' | sort | uniq -c | sort -rn | head -5
 
-obj/%.o: $(TCCSRC)/%.c $(TCCSRC)/config.h | obj
+$(OUTDIR)/obj/%.o: $(TCCSRC)/%.c $(TCCSRC)/config.h | $(OUTDIR)/obj
 	$(ARMCC) $(CFLAGS) -include $(TCCSRC)/config.h -MMD -MP -c $< -o $@
 
 # TCC builds as ONE source: tcc.c #includes tccpp/tccgen/tccelf/... so the
-# auto-deps (obj/tcc.d) must be included to rebuild on backend changes
--include obj/tcc.d
+# auto-deps ($(OUTDIR)/obj/tcc.d) must be included to rebuild on backend changes
+-include $(OUTDIR)/obj/tcc.d
 
 # HP_SVC selects the crt0: hp/hp_svc.s (normal) or hp/hp_svc_test.s
 # (minimal startup test for on-calculator debugging).
 HP_SVC ?= hp/hp_svc.s
 
-obj/hp_svc.o: $(HP_SVC) | obj
+$(OUTDIR)/obj/hp_svc.o: $(HP_SVC) | $(OUTDIR)/obj
 	$(ARMAS) $(ASFLAGS) $(HP_SVC) -o $@
 
-obj/hp_libc.o: hp/hp_libc.c hp/hp_libc.h | obj
+$(OUTDIR)/obj/hp_libc.o: hp/hp_libc.c hp/hp_libc.h | $(OUTDIR)/obj
 	$(ARMCC) $(CFLAGS) -c hp/hp_libc.c -o $@
 
-obj/hp_vsnprintf.o: hp/hp_vsnprintf.c hp/hp_libc.h | obj
+$(OUTDIR)/obj/hp_vsnprintf.o: hp/hp_vsnprintf.c hp/hp_libc.h | $(OUTDIR)/obj
 	$(ARMCC) $(CFLAGS) -c hp/hp_vsnprintf.c -o $@
 
-# RESIDENT input-hook service: compiled INTO tcc.elf so the firmware
+# RESIDENT input-hook service: compiled INTO $(OUTDIR)/tcc.elf so the firmware
 # get_event slot always points at never-freed code (see rt/hp_input_svc.c)
-obj/hp_input_svc.o: rt/hp_input_svc.c rt/hp_input_svc.h hp/hp_libc.h | obj
+$(OUTDIR)/obj/hp_input_svc.o: rt/hp_input_svc.c rt/hp_input_svc.h hp/hp_libc.h | $(OUTDIR)/obj
 	$(ARMCC) $(CFLAGS) -c rt/hp_input_svc.c -o $@
 
 # TCC's configure generates config.h for the ARM target (one-time).
@@ -112,7 +114,7 @@ $(TCCSRC)/config.h: $(TCCSRC)/configure
 	    --cross-prefix=$(CROSS_COMPILE) --prefix=$(TOPDIR)/arm-tcc-prefix
 
 # ---------- runtime for TCC-compiled user programs ----------
-# rt_core.o: the fixed user-program runtime (hp_rt + hp_gfx + hp_input +
+# $(OUTDIR)/rt_core.o: the fixed user-program runtime (hp_rt + hp_gfx + hp_input +
 # hp_math + hp_string) prebuilt with GCC.  TCC on the calculator then only
 # compiles the user's code.c (was ~39 KB of runtime sources per compile)
 # and links the rest -- on-calc compile time drops by roughly 4x.
@@ -123,15 +125,15 @@ RT_CORE_HDRS := rt/hp_gfx.h rt/hp_input.h rt/hp_math.h rt/hp_string.h \
 	rt/hp_fixmath.h rt/hp_random.h rt/hp_codec.h rt/hp_gui.h rt/hp_icall.h
 RT_CORE_FLAGS := -O2 -ffreestanding -fPIC -mcpu=arm926ej-s -marm -mfloat-abi=soft \
 	-I$(TOPDIR)/rt -Wall -fno-optimize-sibling-calls
-rt_core.o: $(RT_CORE_SRCS) $(RT_CORE_HDRS) | rt_svc.o
-	@rm -rf obj/corex && mkdir -p obj/corex
+$(OUTDIR)/rt_core.o: $(RT_CORE_SRCS) $(RT_CORE_HDRS) | $(OUTDIR)/rt_svc.o
+	@rm -rf $(OUTDIR)/obj/corex && mkdir -p $(OUTDIR)/obj/corex
 	@set -e; for f in $(RT_CORE_SRCS); do \
-	    $(ARMCC) $(RT_CORE_FLAGS) -c $$f -o obj/corex/$$(basename $$f .c).o; \
+	    $(ARMCC) $(RT_CORE_FLAGS) -c $$f -o $(OUTDIR)/obj/corex/$$(basename $$f .c).o; \
 	done
-	@$(ARMLD) -r obj/corex/*.o -o $@
-	@echo "==> rt_core.o built ($(shell wc -c < $@) bytes)"
+	@$(ARMLD) -r $(OUTDIR)/obj/corex/*.o -o $@
+	@echo "==> $(OUTDIR)/rt_core.o built ($(shell wc -c < $@) bytes)"
 
-# rt_math.o: openlibm (BSD) prebuilt with -O2; the transcendental + simple
+# $(OUTDIR)/rt_math.o: openlibm (BSD) prebuilt with -O2; the transcendental + simple
 # functions are renamed to hp_* via -D so they plug into hp_math.h.
 OLM := $(TOPDIR)/rt/openlibm
 OLM_FLAGS := -O2 -ffreestanding -fPIC -mcpu=arm926ej-s -marm -mfloat-abi=soft -I$(OLM)
@@ -147,22 +149,22 @@ OLM_SRCS := k_sin.c k_cos.c k_tan.c s_sin.c s_cos.c s_tan.c s_atan.c \
 	e_log.c e_log10.c e_pow.c e_sqrt.c e_sinh.c e_cosh.c s_tanh.c \
 	s_floor.c s_ceil.c s_fabs.c s_trunc.c s_round.c e_fmod.c s_frexp.c \
 	s_modf.c k_exp.c s_scalbn.c s_expm1.c
-rt_math.o: $(addprefix $(OLM)/,$(OLM_SRCS)) $(OLM)/cdefs-compat.h
-	@rm -rf obj/olmx && mkdir -p obj/olmx
+$(OUTDIR)/rt_math.o: $(addprefix $(OLM)/,$(OLM_SRCS)) $(OLM)/cdefs-compat.h
+	@rm -rf $(OUTDIR)/obj/olmx && mkdir -p $(OUTDIR)/obj/olmx
 	@cd $(OLM) && $(ARMCC) $(OLM_FLAGS) $(OLM_RENAMES) -c $(OLM_SRCS)
-	@mv $(OLM)/*.o obj/olmx/
-	@$(ARMLD) -r obj/olmx/*.o -o $(TOPDIR)/rt_math.o
-	@echo "==> rt_math.o built"
-	@$(ARMCC) -c rt/rt_softfloat.c -o obj/olmx/rt_softfloat.o 2>/dev/null || true
+	@mv $(OLM)/*.o $(OUTDIR)/obj/olmx/
+	@$(ARMLD) -r $(OUTDIR)/obj/olmx/*.o -o $(OUTDIR)/rt_math.o
+	@echo "==> $(OUTDIR)/rt_math.o built"
+	@$(ARMCC) -c rt/rt_softfloat.c -o $(OUTDIR)/obj/olmx/rt_softfloat.o 2>/dev/null || true
 
-rt_svc.o: rt/rt_svc.s
+$(OUTDIR)/rt_svc.o: rt/rt_svc.s
 	$(ARMAS) $(ASFLAGS) rt/rt_svc.s -o $@
 
 # __aeabi_* helpers extracted from libgcc (division, 64-bit ops)
-rt_aeabi.o: | rt_svc.o
-	@rm -rf obj/libgccx && mkdir -p obj/libgccx
-	@$(ARMCC) $(CFLAGS) -c rt/rt_softfloat.c -o obj/libgccx/rt_softfloat.o
-	@cd obj/libgccx && $(ARMAR) x $$($(ARMCC) -print-libgcc-file-name) \
+$(OUTDIR)/rt_aeabi.o: | $(OUTDIR)/rt_svc.o
+	@rm -rf $(OUTDIR)/obj/libgccx && mkdir -p $(OUTDIR)/obj/libgccx
+	@$(ARMCC) $(CFLAGS) -c rt/rt_softfloat.c -o $(OUTDIR)/obj/libgccx/rt_softfloat.o
+	@cd $(OUTDIR)/obj/libgccx && $(ARMAR) x $$($(ARMCC) -print-libgcc-file-name) \
 	    _divsi3.o _udivsi3.o _modsi3.o _umodsi3.o _dvmd_tls.o \
 	    _clzsi2.o _clzdi2.o _ctzsi2.o _ctzdi2.o \
 	    _aeabi_ldivmod.o _aeabi_uldivmod.o \
@@ -176,8 +178,8 @@ rt_aeabi.o: | rt_svc.o
 	    _arm_truncdfsf2.o _arm_unorddf2.o _arm_unordsf2.o \
 	    _fixdfdi.o _fixsfdi.o _fixunsdfdi.o _fixunssfdi.o \
 	    _powidf2.o _powisf2.o 2>/dev/null || true
-	@cd obj/libgccx && $(ARMLD) -r *.o -o $(TOPDIR)/rt_aeabi.o && \
-	    $(ARMSTRIP) --strip-debug $(TOPDIR)/rt_aeabi.o
+	@cd $(OUTDIR)/obj/libgccx && $(ARMLD) -r *.o -o $(OUTDIR)/rt_aeabi.o && \
+	    $(ARMSTRIP) --strip-debug $(OUTDIR)/rt_aeabi.o
 
 # ---------- host-side TCC (reference / experiments) ----------
 host:
@@ -185,27 +187,28 @@ host:
 	    make -j$$(nproc) >/dev/null && make install >/dev/null
 	@echo "==> host TCC at $(HOSTTCC)"
 
-test: tcc.elf rt_core.o rt_math.o rt_svc.o rt_aeabi.o
+test: $(OUTDIR)/tcc.elf $(OUTDIR)/rt_core.o $(OUTDIR)/rt_math.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o
 	python3 tests/harness.py
 
-obj:
-	mkdir -p obj
+$(OUTDIR)/obj:
+	mkdir -p $(OUTDIR)/obj
 
 clean:
-	rm -rf obj tcc.elf rt_core.o rt_svc.o rt_aeabi.o rt_math.o
+	rm -rf $(OUTDIR)
 	rm -f $(TCCSRC)/config.h
 
 # Rebuild and copy the flat deployment directory (no subfolders - the
 # calculator does not support them).  Only code.c is TCC-compiled on the
-# calculator; the runtime is prebuilt (rt_core.o) and linked by TCC.
-deploy: tcc.elf rt_core.o rt_svc.o rt_aeabi.o rt_math.o
+# calculator; the runtime is prebuilt ($(OUTDIR)/rt_core.o) and linked by TCC.
+deploy: $(OUTDIR)/tcc.elf $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o $(OUTDIR)/rt_math.o
 	@mkdir -p ../primetcc.hpappdir
 	@rm -f ../primetcc.hpappdir/hp_rt.c ../primetcc.hpappdir/hp_gfx.c \
 	    ../primetcc.hpappdir/hp_input.c ../primetcc.hpappdir/hp_math.c \
 	    ../primetcc.hpappdir/hp_string.c
-	@cp tcc.elf calc/main.py hp/prime.h hp/stdbool.h rt_core.o rt_svc.o rt_aeabi.o rt_math.o \
+	@cp $(OUTDIR)/tcc.elf calc/main.py hp/prime.h hp/stdbool.h $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o $(OUTDIR)/rt_math.o \
 	    rt/hp_gfx.h rt/hp_input.h rt/hp_math.h rt/hp_string.h rt/hp_fonts.h \
 	    rt/hp_sys.h rt/hp_fixmath.h rt/hp_random.h rt/hp_codec.h rt/hp_gui.h \
+	    rt/hp_icall.h rt/hp_image.h \
 	    ../primetcc.hpappdir/
 	@echo "==> deployed to ../primetcc.hpappdir/"
 

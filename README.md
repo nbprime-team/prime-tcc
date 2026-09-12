@@ -41,9 +41,14 @@ prime-tcc/
 ├── examples/                   独立示例（8 个 .c）
 ├── primetcc.hpappdir/          部署目录（tcc.elf、rt_*.o、main.py、*、hp_*.h、
 │                               icon.png、primetcc.hpapp*、code.c/elf…）
-├── rt_core.o / rt_math.o / rt_svc.o / rt_aeabi.o   预编译产物
-└── tcc.elf                     TCC 编译器本体（预编译）
+└── prebuilt/                   预编译产物（集中于此，此前散落在仓库根）
+    ├── tcc.elf                 TCC 编译器本体
+    └── rt_core.o / rt_math.o / rt_svc.o / rt_aeabi.o   运行时与软浮点辅助
 ```
+
+构建产物一律输出到 `prebuilt/`（`OUTDIR`），中间产物在 `prebuilt/obj/`
+（不入库，见 `.gitignore`）；`make deploy` 从 `prebuilt/` 拷贝到
+`primetcc.hpappdir/`。
 
 ## 构建
 

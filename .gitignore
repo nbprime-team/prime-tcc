@@ -1,0 +1,10 @@
+# AI 生成 / 辅助创作：DeepSeek V4.1 Flash（未人工审查）
+#
+# 中间产物（每次构建重建；prebuilt/ 下的最终产物按上游约定入库）
+prebuilt/obj/
+
+# configure 生成
+src/tinycc-mob/config.h
+
+# TCC 源码编译时产出的散落目标文件（openlibm 的构建副作用）
+rt/openlibm/*.o
