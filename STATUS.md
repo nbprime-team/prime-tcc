@@ -17,24 +17,45 @@
 | 缺失 | 见 §2 |
 | 根因 | 上游 git 历史从未提交这些源码（`git log --all -- src` 无输出，HEAD 仅 18 个文件） |
 
-## 2. 缺失源码（阻塞，需上游提供）
+## 2. 待获取源码清单（阻塞）
 
 **全工作区（含 `nbprime/`）都不存在**——已逐个 `find` 核实。
 
-| 缺失 | 被谁引用 |
-|---|---|
-| `src/tinycc-mob/`（整目录：`tcc.c`、`configure` 等） | `TCCSRC` → `obj/tcc.o` |
-| `hp/hp_libc.c`、`hp/hp_libc.h`、`hp/hp_vsnprintf.c`、`hp/hp_svc.s` | `HP_OBJS` |
-| `hp/include/`（TCC 编译用桩头文件） | `CFLAGS -I$(TOPDIR)/hp/include` |
-| `rt/hp_fonts.c`、`rt/hp_fonts_data.c`、`rt/hp_sys.c`、`rt/hp_fixmath.c`、`rt/hp_random.c`、`rt/hp_codec.c`、`rt/hp_gui.c` | `RT_CORE_SRCS` |
-| `rt/hp_icall.c`、`rt/hp_image.c` | `RT_CORE_SRCS`（头 `hp_icall.h`/`hp_image.h` 已就位） |
-| `rt/hp_input_svc.c/.h` | 编入 `tcc.elf` |
-| `rt/rt_svc.s`、`rt/rt_softfloat.c` | `rt_svc.o` / `rt_aeabi.o` |
-| `rt/openlibm/`（整目录，27 个 `.c`） | `OLM_SRCS` → `rt_math.o` |
-| `tests/harness.py`、`tests/emu_arm2.py`、`tests/restart_check.py` | `make test` |
+### 2.1 证据：这些源码确实存在过（从已提交产物反推）
 
-> 现有 `rt/*.c` 是**旧版**，与较新的 `*.h` 不一致（如 `hp_gfx.c` 未实现 `hp_blend`）。
-> 补齐时以头文件契约为准。
+`readelf -s <产物> | grep FILE` 读 `STT_FILE`（每个目标文件记录其编译单位）：
+
+| 产物 | `STT_FILE` 记录 | 结论 |
+|---|---|---|
+| `prebuilt/rt_core.o` | `hp_codec.c` `hp_fixmath.c` `hp_fonts.c` `hp_fonts_data.c` `hp_gfx.c` `hp_gui.c` `hp_icall.c` `hp_input.c` `hp_math.c` `hp_random.c` `hp_rt.c` `hp_string.c` `hp_sys.c`（**13 个**） | 与 `Makefile` 的 `RT_CORE_SRCS` **完全吻合** → 缺的那几个 `.c` 确实曾编译进去 |
+| `prebuilt/tcc.elf` | `tcc.c`、`hp_libc.c`、`hp_vsnprintf.c`、`hp_svc.o`、`hp_input_svc.c`、`libgcc2.c`、`_arm_*.o`… | 与 `TCCSRC`/`HP_OBJS` 吻合 |
+| `prebuilt/rt_math.o` | `e_acos.c`、`e_asin.c`、`e_atan2.c`… | 即 openlibm 目录 |
+
+产物规模（可用于判断拿到的源码是否同版本）：
+`tcc.elf` text 425950 / data 35048 / bss 215364；`rt_core.o` 147104 字节。
+
+### 2.2 清单
+
+| 缺失 | 引用位置 | 反推证据 |
+|---|---|---|
+| `src/tinycc-mob/`（整目录：`tcc.c`、`configure` 等） | `TCCSRC` → `obj/tcc.o` | `tcc.elf` 含 `tcc.c` |
+| `hp/hp_libc.c`、`hp/hp_libc.h` | `HP_OBJS` | `tcc.elf` 含 `hp_libc.c` |
+| `hp/hp_vsnprintf.c` | `HP_OBJS` | `tcc.elf` 含 `hp_vsnprintf.c` |
+| `hp/hp_svc.s` | `HP_OBJS` | `tcc.elf` 含 `hp_svc.o` |
+| `hp/include/`（TCC 编译用桩头文件） | `CFLAGS -I$(TOPDIR)/hp/include` | — |
+| `rt/hp_fonts.c`、`rt/hp_fonts_data.c`、`rt/hp_sys.c`、`rt/hp_fixmath.c`、`rt/hp_random.c`、`rt/hp_codec.c`、`rt/hp_gui.c`、`rt/hp_icall.c` | `RT_CORE_SRCS` | 均出现在 `rt_core.o` 的 `STT_FILE` |
+| `rt/hp_image.c` | `RT_CORE_SRCS`（头 `hp_image.h` 已就位） | 不在旧 `rt_core.o` 中 → 属较新新增 |
+| `rt/hp_input_svc.c`、`rt/hp_input_svc.h` | 编入 `tcc.elf` | `tcc.elf` 含 `hp_input_svc.c` |
+| `rt/rt_svc.s`、`rt/rt_softfloat.c` | `rt_svc.o` / `rt_aeabi.o` | `rt_aeabi.o` 已 strip |
+| `rt/openlibm/`（整目录，27 个 `.c`） | `OLM_SRCS` → `rt_math.o` | `rt_math.o` 的 `STT_FILE` |
+| `tests/harness.py`、`tests/emu_arm2.py`、`tests/restart_check.py` | `make test` | — |
+
+**核对方法**：拿到某个 `.c` 后，用
+`arm-none-eabi-readelf -s prebuilt/rt_core.o | grep FILE` 与上表比对，
+再用 `arm-none-eabi-nm prebuilt/rt_core.o` 检查符号是否齐全。
+
+> 现有 `rt/*.c` 是**旧版**，与较新的 `*.h` 不一致（如 `hp_gfx.c` 未实现 `hp_gfx.h`
+> 声明的 `hp_blit*`）。补齐时以**头文件契约**为准。
 
 ## 3. 源码疑误（**已标记，未修改**）
 
