@@ -1,3 +1,5 @@
+# AI 生成 / 辅助创作：DeepSeek V4.1 Flash（本次修订，未人工审查）
+#
 # primetcc -- TCC (TinyCC) ported to the HP Prime G1 calculator
 #
 # Targets:
@@ -7,26 +9,43 @@
 #   make test     -> run host-side tests (requires tests/emu_arm.py)
 #   make clean
 #
-# Toolchain: arm-none-eabi-gcc (Ubuntu package gcc-arm-none-eabi)
+# Toolchain: arm-none-eabi-gcc（系统包或 ../toolchain/ 内置，见 CROSS_COMPILE /
+#            TOOLCHAIN_ROOT 变量与 ../toolchain/README.md）
 # Target:    ARM926EJ-S (ARMv5TEJ), soft-float, freestanding, -fPIC -pie
 
 TOPDIR  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 TCCSRC  := $(TOPDIR)/src/tinycc-mob
 HOSTTCC := $(TOPDIR)/host-tcc/bin/tcc
 
-ARMCC  := arm-none-eabi-gcc
-ARMAS  := arm-none-eabi-as
-ARMAR  := arm-none-eabi-ar
-ARMLD  := arm-none-eabi-ld
+# 交叉工具链前缀。默认使用 PATH 上的 arm-none-eabi-*；
+# 也可是仓库内工具链——`source ../toolchain/scripts/env.sh` 会自动设好 PATH 与
+# TOOLCHAIN_ROOT，之后直接 make 即可；也可显式指定：
+#   make TOOLCHAIN_ROOT=../toolchain/armtc/root
+# 详见 ../toolchain/README.md（注意：仓库内工具链必须经 armtc-tools 包装层调用，
+# 否则 GCC 会命中宿主机 x86 as 并报 invalid -march= option）。
+CROSS_COMPILE ?= arm-none-eabi-
+
+ARMCC  := $(CROSS_COMPILE)gcc
+ARMAS  := $(CROSS_COMPILE)as
+ARMAR  := $(CROSS_COMPILE)ar
+ARMLD  := $(CROSS_COMPILE)ld
+ARMSTRIP := $(CROSS_COMPILE)strip
 
 ARCH    := -mcpu=arm926ej-s -marm -mfloat-abi=soft
-# newlib headers provide the standard <stdio.h> etc. DECLARATIONS for the
-# TCC sources; we link against our own hp_libc implementations instead of
-# newlib.  CONFIG_TCC_STATIC skips <dlfcn.h> (no dynamic loading on the calc).
-# NOTE: keep -O0!  -O1/-O2 builds of tcc.o misbehave on the emulator (TCC
-# reports "struct/union/enum already defined" during predefines); -O0 is
-# reliable.  Diagnose (gcc bug vs emulator gap) before raising this.
+# newlib 头文件提供标准 <stdio.h> 等 DECLARATIONS；实现用自己的 hp_libc，
+# 而不是链接 newlib。CONFIG_TCC_STATIC 跳过 <dlfcn.h>（计算器无动态加载）。
+# 注意：tcc.o 必须保持 -O0！-O1/-O2 下 TCC 在预定义阶段报
+# "struct/union/enum already defined"（见 README「已知限制」）。
+# newlib 头文件搜索路径随工具链来源而异：
+#   * 仓库内 Debian 布局工具链（推荐）：$(TOOLCHAIN_ROOT)/usr/include/newlib
+#   * 发行版系统包（部分 Ubuntu）：/usr/lib/arm-none-eabi/include
+# 用 TOOLCHAIN_ROOT=<dir> 切换；留空则用系统包路径。
+TOOLCHAIN_ROOT ?=
+ifneq ($(TOOLCHAIN_ROOT),)
+SYSINC  := -isystem $(abspath $(TOOLCHAIN_ROOT))/usr/include/newlib
+else
 SYSINC  := -isystem /usr/lib/arm-none-eabi/include
+endif
 CFLAGS  := $(ARCH) -ffreestanding -fPIC -O0 -g -Wall \
            -I$(TOPDIR)/hp/include -I$(TOPDIR)/hp -I$(TOPDIR)/rt -I$(TCCSRC) \
            -DTCC_TARGET_ARM -DCONFIG_TCC_STATIC -DTCC_ARM_EABI -DTCC_ARM_SOFT_FLOAT -DHP_PRIME $(SYSINC)
@@ -89,8 +108,8 @@ obj/hp_input_svc.o: rt/hp_input_svc.c rt/hp_input_svc.h hp/hp_libc.h | obj
 
 # TCC's configure generates config.h for the ARM target (one-time).
 $(TCCSRC)/config.h: $(TCCSRC)/configure
-	cd $(TCCSRC) && ./configure --cc=arm-none-eabi-gcc --cpu=arm \
-	    --cross-prefix=arm-none-eabi- --prefix=$(TOPDIR)/arm-tcc-prefix
+	cd $(TCCSRC) && ./configure --cc=$(ARMCC) --cpu=arm \
+	    --cross-prefix=$(CROSS_COMPILE) --prefix=$(TOPDIR)/arm-tcc-prefix
 
 # ---------- runtime for TCC-compiled user programs ----------
 # rt_core.o: the fixed user-program runtime (hp_rt + hp_gfx + hp_input +
@@ -158,7 +177,7 @@ rt_aeabi.o: | rt_svc.o
 	    _fixdfdi.o _fixsfdi.o _fixunsdfdi.o _fixunssfdi.o \
 	    _powidf2.o _powisf2.o 2>/dev/null || true
 	@cd obj/libgccx && $(ARMLD) -r *.o -o $(TOPDIR)/rt_aeabi.o && \
-	    arm-none-eabi-strip --strip-debug $(TOPDIR)/rt_aeabi.o
+	    $(ARMSTRIP) --strip-debug $(TOPDIR)/rt_aeabi.o
 
 # ---------- host-side TCC (reference / experiments) ----------
 host:
