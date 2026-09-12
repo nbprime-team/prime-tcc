@@ -1,14 +1,14 @@
 /*
- * hp_math.h -- simple math library for TCC-compiled programs on the HP Prime.
+ * hp_math.h —— HP Prime 上 TCC 编译程序的简单数学库。
  *
- * Pure C implementations built on the soft-float runtime (rt_aeabi.o).
- * Target accuracy ~1e-8 (simple, compact — not full fdlibm).
+ * 基于软浮点运行时（rt_aeabi.o）的纯 C 实现。
+ * 目标精度约 1e-8（简单紧凑，非完整 fdlibm）。
  *
- * Usage:  #include "hp_math.h"   (link hp_math.c in the TCC command line)
+ * 用法：#include "hp_math.h"（TCC 命令行里链接 hp_math.c）
  *
- * Printing doubles: the fixed-arg printf has no %f, so format with
- * ftoa/dtoa from hp_string.h and prints(buf) (hp_double_to_str below is
- * a legacy wrapper over ftoa -- same result, prefer ftoa/dtoa).
+ * 打印 double：定参 printf 没有 %f，改用 hp_string.h 的 ftoa/dtoa
+ * 格式化后再 prints(buf)（下面的 hp_double_to_str 是 ftoa 的旧包装，
+ * 结果相同，优先用 ftoa/dtoa）。
  */
 #ifndef HP_MATH_H
 #define HP_MATH_H
@@ -49,7 +49,7 @@ double hp_sinh(double x);
 double hp_cosh(double x);
 double hp_tanh(double x);
 
-/* format a double into buf (e.g. "3.1416"); buf must hold >= 32 bytes */
+/* 把 double 格式化进 buf（如 "3.1416"）；buf 至少 32 字节 */
 void hp_double_to_str(char *buf, double d, int decimals);
 
 #endif /* HP_MATH_H */

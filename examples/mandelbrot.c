@@ -4,39 +4,38 @@
 #include "hp_input.h"
 #include "hp_sys.h"
 
-/* ---- interactive Mandelbrot set renderer (fixed-point, pure int) ----
- * Arrows (0x02/0x03/0x04/0x05) pan the view; '+' (0xB9) zooms in,
- * '-' (0xB7) zooms out; q (0x51) / ON (0x83) / ESC (0x01) cancel the
- * current redraw, or exit when idle.  The viewport is clamped so the
- * center stays within one initial range of the origin and the range
- * stays in [R0/128, 4*R0].  MB_SCALE = 4096 (12 fractional bits). */
+/* ---- 交互式 Mandelbrot 集渲染器（定点、纯整数）----
+ * 方向键（0x02/0x03/0x04/0x05）平移视图；'+'（0xB9）放大，
+ * '-'（0xB7）缩小；q（0x51）/ ON（0x83）/ ESC（0x01）取消当前重绘，
+ * 空闲时则退出。视口被钳制，使中心保持在原点的一个初始范围之内，且
+ * 范围保持在 [R0/128, 4*R0]。MB_SCALE = 4096（12 位小数）。 */
 
 #define MB_MAXITER 128
-#define MB_SCALE   4096            /* 1.0 == 4096 (12 fractional bits) */
+#define MB_SCALE   4096            /* 1.0 == 4096（12 位小数） */
 #define MB_XMIN0   (-8192)         /* -2.0 */
 #define MB_XMAX0   3277            /* 0.8  */
 #define MB_YMIN0   (-4300)         /* -1.05 */
 #define MB_YMAX0   4300            /* +1.05 */
 #define MB_RX0     (MB_XMAX0 - MB_XMIN0)             /* 2.8 */
 #define MB_RY0     (MB_YMAX0 - MB_YMIN0)             /* 2.1 */
-#define MB_MINR    (MB_RX0 / 128)                    /* zoom-in limit */
-#define MB_MAXR    (4 * MB_RX0)                      /* zoom-out limit */
-/* cancel keys: physical scan codes verified against the hardware table
- * (see hp_input.h): q = 7/Q key, ON = 0x83, ESC = 0x01 */
+#define MB_MINR    (MB_RX0 / 128)                    /* 放大上限 */
+#define MB_MAXR    (4 * MB_RX0)                      /* 缩小上限 */
+/* 取消键：物理扫描码已对照硬件表核实
+ * （见 hp_input.h）：q = 7/Q 键，ON = 0x83，ESC = 0x01 */
 #define MB_KEY_Q   HP_KEY_Q
 #define MB_KEY_ON  HP_KEY_ON
 #define MB_KEY_ESC HP_KEY_ESC
-#define MB_KEY_ADD 0xB9            /* '+' (add) */
-#define MB_KEY_SUB 0xB7            /* '-' (minus) */
+#define MB_KEY_ADD 0xB9            /* '+'（加号） */
+#define MB_KEY_SUB 0xB7            /* '-'（减号） */
 
-static int mb_xmin, mb_xmax, mb_ymin, mb_ymax;   /* current viewport */
+static int mb_xmin, mb_xmax, mb_ymin, mb_ymax;   /* 当前视口 */
 
 static int mb_is_cancel(int key)
 {
     return key == MB_KEY_Q || key == MB_KEY_ON || key == MB_KEY_ESC;
 }
 
-/* color by iteration count: black = in the set, else a 7-band palette */
+/* 按迭代次数上色：黑色 = 在集合内，否则用 7 段调色板 */
 static hp_color mb_color(unsigned it)
 {
     static const hp_color pal[7] = {
@@ -47,7 +46,7 @@ static hp_color mb_color(unsigned it)
     return pal[(it * 7u) / MB_MAXITER];
 }
 
-/* escape-time iteration for one pixel (fixed point, current viewport) */
+/* 单个像素的逃逸时间迭代（定点，当前视口） */
 static unsigned mb_iter(int px, int py, int w, int h)
 {
     int cr = mb_xmin + (int)(((long)(mb_xmax - mb_xmin) * px) / w);
@@ -55,18 +54,18 @@ static unsigned mb_iter(int px, int py, int w, int h)
     int zr = 0, zi = 0;
     unsigned it = 0;
     while (it < MB_MAXITER) {
-        int zr2 = (zr * zr) >> 12;      /* / MB_SCALE */
+        int zr2 = (zr * zr) >> 12;      /* 除以 MB_SCALE */
         int zi2 = (zi * zi) >> 12;
-        if (zr2 + zi2 > (4 << 12))      /* |z|^2 > 4: escaped */
+        if (zr2 + zi2 > (4 << 12))      /* |z|^2 > 4：已逃逸 */
             break;
-        zi = ((zr * zi) >> 11) + ci;    /* 2*zr*zi (+MB_SCALE) */
+        zi = ((zr * zi) >> 11) + ci;    /* 2*zr*zi（+MB_SCALE） */
         zr = zr2 - zi2 + cr;
         it++;
     }
     return it;
 }
 
-/* clamp: center within +/- one initial range of the origin; range bounded */
+/* 钳制：中心在原点 +/- 一个初始范围之内；范围有界 */
 static void mb_clamp(void)
 {
     int xr = mb_xmax - mb_xmin, yr = mb_ymax - mb_ymin;
@@ -87,7 +86,7 @@ static void mb_clamp(void)
     mb_ymax = mb_ymin + yr;
 }
 
-static void mb_pan(int fx, int fy)      /* fx/fy in percent of the range */
+static void mb_pan(int fx, int fy)      /* fx/fy 为范围的百分比 */
 {
     int xr = mb_xmax - mb_xmin, yr = mb_ymax - mb_ymin;
     mb_xmin += (long)xr * fx / 100;
@@ -97,7 +96,7 @@ static void mb_pan(int fx, int fy)      /* fx/fy in percent of the range */
     mb_clamp();
 }
 
-static void mb_zoom(int in)             /* 1 = in (x4/5), 0 = out (x5/4) */
+static void mb_zoom(int in)             /* 1 = 放大（x4/5），0 = 缩小（x5/4） */
 {
     int xr = mb_xmax - mb_xmin, yr = mb_ymax - mb_ymin;
     int cx = mb_xmin + xr / 2, cy = mb_ymin + yr / 2;
@@ -110,7 +109,7 @@ static void mb_zoom(int in)             /* 1 = in (x4/5), 0 = out (x5/4) */
     mb_clamp();
 }
 
-/* redraw the current viewport; returns 1 if interrupted, 0 when done */
+/* 重绘当前视口；被中断返回 1，完成返回 0 */
 static int mb_redraw(void)
 {
     hp_event ev;
@@ -119,9 +118,9 @@ static int mb_redraw(void)
     w = hp_gfx_w(); h = hp_gfx_h();
     hp_clear(HP_BLACK);
     for (y = 0; y < h; y++) {
-        /* interrupt check every 4 rows: q / ON / ESC cancels the draw */
+        /* 每 4 行检查一次中断：q / ON / ESC 取消绘制 */
         if ((y & 3) == 0) {
-            __sleep(2);                 /* yield: OS input thread feeds hook */
+            __sleep(2);                 /* 让出：OS 输入线程喂钩子 */
             if (hp_poll_event(&ev) == HP_EV_KEY && hp_event_key_down(&ev)) {
                 int key = hp_event_key(&ev);
                 printf("KEY %02x\n", key, 0, 0, 0);
@@ -145,10 +144,10 @@ int main(void) {
     if (!hp_input_install()) { printf("INPUT HOOK FAIL\n", 0, 0, 0, 0); return 1; }
     hp_clear(HP_BLACK);
     printf("MB start %dx%d\n", hp_gfx_w(), hp_gfx_h(), 0, 0);
-    /* NOTE: no hp_sys_time()/hp_sys_max_alloc() here -- they were the
-     * first candidates for the on-device reboot before the image appeared
-     * (svc 0x100A5 and multi-hundred-KB malloc/free probes are not fully
-     * hardware-verified yet).  The draw/loop below is the proven surface. */
+    /* 注意：这里不调 hp_sys_time()/hp_sys_max_alloc()——它们是图像
+     * 出现前设备重启的首批可疑点（svc 0x100A5 与数十万字节的
+     * malloc/free 探测尚未完全硬件验证）。下面的绘制/循环才是已验证
+     * 的表面。 */
     mb_xmin = MB_XMIN0; mb_xmax = MB_XMAX0;
     mb_ymin = MB_YMIN0; mb_ymax = MB_YMAX0;
 
@@ -161,7 +160,7 @@ int main(void) {
         hp_text(4, 2, "MANDELBROT  arrows=move +-=zoom q/ON/ESC=exit",
                 HP_WHITE);
 
-        /* interactive loop: adjust the viewport, then redraw */
+        /* 交互循环：调整视口，然后重绘 */
         for (;;) {
             __sleep(16);
             t = hp_poll_event(&ev);

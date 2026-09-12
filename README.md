@@ -2,7 +2,7 @@
 
 #### TCC (TinyCC) 移植到 HP Prime G1 计算器
 
-> ⚠️ **AI 生成 / 辅助创作：DeepSeek V4.1 Flash**（本次修订；原文由项目作者撰写）
+> ⚠️ **AI 生成 / 辅助创作：DeepSeek V4.1 Flash**
 
 运行在 **HP Prime G1** 上的 **TinyCC** 0.9.27 移植：TCC 本体交叉编译为单文件 ELF，
 由计算器上的 MicroPython 加载器装入内存运行，把用户 C 源码编译成 ARM ELF
@@ -10,8 +10,8 @@
 
 ## ⚠️ 当前状态：不可构建
 
-源码已按 `Makefile` 期望归位到 `hp/`、`rt/`、`calc/`，但**上游从未提交 TCC 源码
-与其余运行时实现**，`make all` 必然失败：
+源码已按 `Makefile` 期望归位，但**上游从未提交 TCC 源码与其余运行时实现**，
+`make all` 必然失败：
 
 ```text
 make: *** 没有规则可制作目标“obj/tcc.o”，由“tcc.elf” 需求。 停止。
@@ -25,30 +25,28 @@ make: *** 没有规则可制作目标“obj/tcc.o”，由“tcc.elf” 需求�
 prime-tcc/
 ├── README.md / STATUS.md / API.md / API_ABI_CONTRACT.md / LICENSE
 ├── Makefile                    构建（主机侧交叉编译）
-│                               C 核心库经 `SDK ?= ../toolchain/sdk` 直接引用
-├── hp/                         TCC 本体的 Prime 侧支撑（用户程序头文件已移至 toolchain/sdk）
+│                               C 核心库经 `SDK ?= ../toolchain` 从 toolchain/sdk 引用
+├── hp/                         TCC 本体的 Prime 侧支撑（用户程序头已移至 toolchain/sdk）
 │   ├── hp_libc.h/.c  hp_vsnprintf.c  hp_svc.s  include/   [缺失]
-├── rt/                         用户程序运行时（预编译进 rt_core.o）
-│   ├── [已就位] 5 个 .c：hp_rt/hp_gfx/hp_input/hp_math/hp_string
-│   ├── [已就位] 12 个头：hp_gfx/input/math/string/fonts/sys/fixmath/
-│   │            random/codec/gui/icall/image
-│   └── [缺失]   hp_fonts.c hp_fonts_data.c hp_sys.c hp_fixmath.c
-│                hp_random.c hp_codec.c hp_gui.c hp_icall.c hp_image.c
-│                hp_input_svc.c/.h rt_svc.s rt_softfloat.c openlibm/
 ├── calc/main.py                [已就位] 计算器端加载器
 ├── src/tinycc-mob/             [缺失] TCC 源码（含移植补丁）
 ├── tests/                      [缺失] harness.py / emu_arm2.py / restart_check.py
 ├── examples/                   独立示例（8 个 .c）
-├── primetcc.hpappdir/          部署目录（tcc.elf、rt_*.o、main.py、*、hp_*.h、
-│                               icon.png、primetcc.hpapp*、code.c/elf…）
-└── prebuilt/                   预编译产物（集中于此，此前散落在仓库根）
+├── primetcc.hpappdir/          部署目录（main.py、moreprint.py、prime.h、stdbool.h、
+│                               hp_*.h、icon.png、primetcc.hpapp*；tcc.elf 与
+│                               rt_*.o 由 `make deploy` 从 prebuilt/ 拷入）
+└── prebuilt/                   预编译产物（集中于此）
     ├── tcc.elf                 TCC 编译器本体
     └── rt_core.o / rt_math.o / rt_svc.o / rt_aeabi.o   运行时与软浮点辅助
 ```
 
+C 核心库（用户程序头与运行时实现，如 `hp_rt.c`、`hp_gfx.h`）位于
+[`../toolchain/sdk/`](../toolchain/sdk/)（唯一权威源）；`Makefile` 的
+`RT_CORE_*` 与 `deploy` 均从该目录取用。
+
 构建产物一律输出到 `prebuilt/`（`OUTDIR`），中间产物在 `prebuilt/obj/`
-（不入库，见 `.gitignore`）；`make deploy` 从 `prebuilt/` 拷贝到
-`primetcc.hpappdir/`。
+（不入库，见 `.gitignore`）；`make deploy` 从 `prebuilt/` 与 `toolchain/sdk/`
+拷贝到 `primetcc.hpappdir/`。
 
 ## 构建
 
@@ -95,9 +93,9 @@ make all                             # 需先补齐 STATUS.md §2 的源码
 
 ## 固件接口
 
-> ⚠️ **本小节不完整**：上游原文在「运行内存」处中断（仅剩 "Prime内存管理是💩。"），
-> 关于"每轮编译+运行后自由内存减少约 0.71MB"的成因与规避**尚无记录**。补全需
-> `rt/hp_rt.c` 的分配器与 `calc/main.py` 的释放流程。在补齐前**不臆造机制**。
+> ⚠️ **本小节不完整**：关于"每轮编译+运行后自由内存减少约 0.71MB"的成因与规避
+> **尚无记录**。补全需 `toolchain/sdk/hp_rt.c` 的分配器与 `calc/main.py` 的
+> 释放流程。在补齐前**不臆造机制**。
 
 ## 相关文档
 
@@ -108,4 +106,5 @@ make all                             # 需先补齐 STATUS.md §2 的源码
 | [API.md](API.md) | 用户程序 API 速查 |
 | [examples/readme.md](examples/readme.md) | 示例清单与验证顺序 |
 | [../toolchain/README.md](../toolchain/README.md) | 交叉工具链 |
+| [../toolchain/sdk/](../toolchain/sdk/) | C 核心库（头与实现） |
 | [../toolchain/examples/api-probe/](../toolchain/examples/api-probe/) | 接口示例：API/ABI 探针 |

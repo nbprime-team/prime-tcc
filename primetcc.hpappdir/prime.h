@@ -1,31 +1,39 @@
 /*
- * prime.h -- user-facing header for TCC-compiled programs on the HP Prime.
+ * prime.h —— HP Prime 上 TCC 编译程序的用户侧头文件。
  *
- * `#include "prime.h"` at the top of your C source.  The implementations
- * live in hp_rt.c (compiled on the calculator together with your code)
- * and rt_svc.o / rt_aeabi.o (prebuilt, linked by TCC).
+ * 在你的 C 源码顶部 `#include "prime.h"`。实现位于 hp_rt.c（在计算器上
+ * 与你的代码一起编译）和 rt_svc.o / rt_aeabi.o（预编译，由 TCC 链接）。
  */
 #ifndef PRIME_H
 #define PRIME_H
 
-#include "stdbool.h"        /* bool / true / false (C99) */
+#include "stdbool.h"        /* bool / true / false（C99） */
 
+/* size_t / NULL：跟随宿主编译器（__SIZE_TYPE__），使同一份用户代码在
+ * 计算器上的 TCC 与 PC 上的 gcc 下都得到正确的 size_t 宽度
+ * （ARM 为 32 位、PC 为 64 位）。 */
+#ifndef PRIME_SIZE_T_DEFINED
+#define PRIME_SIZE_T_DEFINED
+#define SIZE_T_DEFINED
+#if defined(__SIZE_TYPE__)
+typedef __SIZE_TYPE__ size_t;
+#else
 typedef unsigned int size_t;
+#endif
+#endif
 #define NULL ((void *)0)
 
-/* console output -> PRIMELOG ring (main.py prints it).
+/* 控制台输出 -> PRIMELOG 环形缓冲（由 main.py 打印）。
  *
- * printf / sprintf are VARIADIC at the source level and accept 1..8
- * values after the format string:  printf("x=%d y=%x\n", x, y);
+ * printf / sprintf 在源码层是变参，格式串后接受 1..8 个值：
+ *   printf("x=%d y=%x\n", x, y);
  *
- * TCC's ARM backend has no AAPCS variadic-call support (no va_start
- * codegen: anonymous args would land in r0-r3 while the GCC-built runtime
- * reads them off the stack), so "varargs" are implemented with C99
- * variadic macros that dispatch on the argument count onto fixed-arity
- * engine functions (hp_printf8/hp_sprintf8, up to 8 values).
+ * TCC 的 ARM 后端不支持 AAPCS 变参（不生成 va_start：匿名参数会落在
+ * r0-r3，而 GCC 构建的运行时从栈上读），因此"变参"用 C99 变参宏按实参
+ * 个数派发到定参引擎函数（hp_printf8/hp_sprintf8，最多 8 个值）。
  *
- * Conversions: %d %i %u %x %X %o %c %s %p, with - 0 + space flags and a
- * width; no %f (format doubles with ftoa/dtoa from hp_string.h instead). */
+ * 转换说明符：%d %i %u %x %X %o %c %s %p，支持 - 0 + 空格 标志和宽度；
+ * 不支持 %f（double 请用 hp_string.h 的 ftoa/dtoa 格式化）。 */
 int  hp_printf8(const char *fmt, unsigned long a0, unsigned long a1,
                 unsigned long a2, unsigned long a3, unsigned long a4,
                 unsigned long a5, unsigned long a6, unsigned long a7);
@@ -38,9 +46,9 @@ void prints(const char *s);
 void printd(long v);
 void printx(unsigned long v);
 
-/* ---- variadic dispatch: count the arguments, pick the arity -----------
- * printf(fmt, v1..v8)   -> 1..9  total args
- * sprintf(buf, fmt, v1..v8) -> 2..10 total args */
+/* ---- 变参派发：数实参个数，选对应元数 --------------------------------
+ * printf(fmt, v1..v8)        -> 共 1..9 个实参
+ * sprintf(buf, fmt, v1..v8)  -> 共 2..10 个实参 */
 #define PP_CAT(a, b)  PP_CAT_(a, b)
 #define PP_CAT_(a, b) a ## b
 #define PP_NARG(...)  PP_NARG_(__VA_ARGS__, PP_RSEQ_N())
@@ -71,23 +79,23 @@ void printx(unsigned long v);
 #define hp_sprintf_9(b, f, v1, v2, v3, v4, v5, v6, v7) hp_sprintf8((b), (f), (unsigned long)(v1), (unsigned long)(v2), (unsigned long)(v3), (unsigned long)(v4), (unsigned long)(v5), (unsigned long)(v6), (unsigned long)(v7), 0)
 #define hp_sprintf_10(b, f, v1, v2, v3, v4, v5, v6, v7, v8) hp_sprintf8((b), (f), (unsigned long)(v1), (unsigned long)(v2), (unsigned long)(v3), (unsigned long)(v4), (unsigned long)(v5), (unsigned long)(v6), (unsigned long)(v7), (unsigned long)(v8))
 
-/* firmware syscalls (see rt_svc.o); num is one of:
+/* 固件系统调用（见 rt_svc.o）；num 取下列之一：
  *   0x10037 malloc   0x10038 calloc   0x10039 realloc   0x1003a free
  *   0x1026f fopen    0x100ca fclose   0x100cf fseek    0x100d0 ftell
  *   0x100d4 fread    0x100d7 fwrite   0x100cb filesize
  *   0x10008 os_sleep 0x1008d get_lcd
- * Convention: push{r0}; push{lr}; svc N; result in r0.
- * NOTE: 0x100a5 (claimed get_time) is NOT usable -- it reboots the G1;
- * there is no time source on the device, so time functions were dropped.
+ * 约定：push{r0}; push{lr}; svc N；结果在 r0。
+ * 注意：0x100a5（据称的 get_time）不可用——它会让 G1 重启；设备上没有
+ * 时间源，因此相关时间函数已移除。
  */
 void  __sleep(unsigned ms);
 
-/* memory */
+/* 内存 */
 void *malloc(size_t n);
 void *calloc(size_t n, size_t sz);
 void  free(void *p);
 
-/* strings / memory */
+/* 字符串 / 内存 */
 size_t strlen(const char *s);
 int    strcmp(const char *a, const char *b);
 int    strncmp(const char *a, const char *b, size_t n);
@@ -96,7 +104,7 @@ void  *memcpy(void *d, const void *s, size_t n);
 void  *memset(void *d, int c, size_t n);
 int    memcmp(const void *a, const void *b, size_t n);
 
-/* sorting / misc (hp_rt.c) */
+/* 排序 / 杂项（hp_rt.c） */
 void   qsort(void *base, size_t nmemb, size_t size,
              int (*cmp)(const void *, const void *));
 void  *bsearch(const void *key, const void *base, size_t nmemb,

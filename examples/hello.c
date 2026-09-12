@@ -1,10 +1,10 @@
 /* PRIME-C-CODE-BEGIN */
 #include "prime.h"
 
-/* ---- hello demo ----
- * Smallest end-to-end example: recursion + printf on the HP Prime
- * console.  Source of truth for tests/harness.py's 'hello' case.
- * Compile on-device:  tcc examples/hello.c -run   (via calc/main.py)
+/* ---- hello 演示 ----
+ * 最小的端到端示例：HP Prime 控制台上的递归 + printf。
+ * 是 tests/harness.py 中 'hello' 用例的基准。
+ * 设备上编译：tcc examples/hello.c -run   （经 calc/main.py）
  */
 
 int fib(int n) { return n < 2 ? n : fib(n-1) + fib(n-2); }

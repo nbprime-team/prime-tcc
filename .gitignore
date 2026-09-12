@@ -6,5 +6,11 @@ prebuilt/obj/
 # configure 生成
 src/tinycc-mob/config.h
 
-# TCC 源码编译时产出的散落目标文件（openlibm 的构建副作用）
-rt/openlibm/*.o
+# 实机应用包目录里的部署产物：由 `make deploy` 从 prebuilt/ 与 toolchain/sdk
+# 拷贝，不自带副本
+primetcc.hpappdir/tcc.elf
+primetcc.hpappdir/rt_*.o
+primetcc.hpappdir/code.c
+primetcc.hpappdir/code.elf
+primetcc.hpappdir/probe5.bin
+primetcc.hpappdir/stage.txt

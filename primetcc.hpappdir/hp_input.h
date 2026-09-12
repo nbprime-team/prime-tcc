@@ -1,17 +1,17 @@
 /*
- * hp_input.h -- keyboard + touch input for TCC-compiled programs on the
- * HP Prime G1, via firmware get_event (svc 0x1003f).
+ * hp_input.h —— HP Prime G1 上 TCC 编译程序的键盘 + 触摸输入，经由
+ * 固件 get_event（svc 0x1003f）。
  *
- * Event structure (verified against the PureDOOM port's my_get_event_hook):
- *   ev->[4]   = event type:  0x00100010 = key,  15 = touch,  else = none
- *   key:      ev->[28] = 16 (press) / 0x100000 (release);  ev->[34] = u16
- *             physical scan code (see HP_KEY_* below)
- *   touch:    ev->[24] = u16 item count (<= 8); each item i occupies 12
- *             bytes at ev->[28 + 12*i]:  [0] = u32 item type (1 = press /
- *             abs position, 2 = move, 8 = release), [4] = u16 (0 = valid),
- *             [6] = u16 x, [8] = u16 y
+ * 事件结构（对照 PureDOOM 移植的 my_get_event_hook 核实）：
+ *   ev->[4]   = 事件类型：0x00100010 = 按键，15 = 触摸，其它 = 无
+ *   key:      ev->[28] = 16（按下）/ 0x100000（抬起）；ev->[34] = u16
+ *             物理扫描码（见下方 HP_KEY_*）
+ *   touch:    ev->[24] = u16 触点数量（<= 8）；第 i 个触点占 12 字节，
+ *             位于 ev->[28 + 12*i]：[0] = u32 触点类型（1 = 按下/绝对
+ *             位置，2 = 移动，8 = 抬起），[4] = u16（0 = 有效），
+ *             [6] = u16 x，[8] = u16 y
  *
- * Usage:
+ * 用法：
  *     hp_event ev;
  *     int t = hp_poll_event(&ev);
  *     if (t == HP_EV_KEY) { int k = hp_event_key(&ev); ... }
@@ -32,42 +32,40 @@
 #define HP_TOUCH_RELEASE  8
 
 typedef struct hp_event {
-    unsigned data[32];      /* 128 bytes, opaque (firmware fills it) */
+    unsigned data[32];      /* 128 字节，不透明（由固件填充） */
 } hp_event;
 
-/* poll one event (non-blocking); returns HP_EV_KEY / HP_EV_TOUCH / 0.
- * Requires hp_input_install() first: input arrives via the RESIDENT
- * firmware get_event hook (inside tcc.elf), NOT by calling get_event
- * directly (it blocks on the OS UI thread). */
+/* 轮询一个事件（非阻塞）；返回 HP_EV_KEY / HP_EV_TOUCH / 0。
+ * 必须先调用 hp_input_install()：输入经固件 get_event 钩子（常驻于
+ * tcc.elf）到达，而不是直接调用 get_event（它会在 OS UI 线程上阻塞）。 */
 int hp_poll_event(hp_event *ev);
 
-/* arm the resident get_event hook: force-patches the firmware API slot
- * 0x307fbfa0 to the hook inside tcc.elf and resets the shared queue.
- * Takes over an already-patched slot (from a previous run) instead of
- * refusing.  Call once at start.  Returns 1 on success, 0 if the shared
- * input state was not provided (entry must be hp_entry with r0 = state). */
+/* 装配常驻的 get_event 钩子：把固件 API 槽 0x307fbfa0 强制改为
+ * tcc.elf 内的钩子，并复位共享队列。若槽已被（上一次运行）打过补丁，
+ * 则接管而不是拒绝。开始时调用一次。成功返回 1；共享输入状态未提供
+ * 时返回 0（入口必须是 hp_entry，且 r0 = 状态指针）。 */
 int  hp_input_install(void);
-/* restore the firmware slot (from the shared saved bytes) and disarm.
- * ALSO called automatically by hp_entry's teardown at exit.  The hook
- * itself stays resident in tcc.elf, so this is always safe. */
+/* 从共享的已保存字节还原固件槽并解除装配。
+ * hp_entry 退出时的清理流程也会自动调用它。钩子本身常驻于 tcc.elf，
+ * 因此该操作始终安全。 */
 void hp_input_remove(void);
-/* 1 while the hook is armed (a program is listening); 1 while the OS
- * thread is inside the hook's blocking get_event call. */
+/* 钩子已装配时为 1（有程序在监听）；OS 线程正处于钩子的阻塞
+ * get_event 调用中时为 1。 */
 int  hp_input_hooked(void);
 int  hp_input_busy(void);
 
-/* key events */
-int hp_event_key(const hp_event *ev);        /* physical scan code (the key id) */
-int hp_event_key_down(const hp_event *ev);   /* 1 = press, 0 = release */
+/* 按键事件 */
+int hp_event_key(const hp_event *ev);        /* 物理扫描码（即键 id） */
+int hp_event_key_down(const hp_event *ev);   /* 1 = 按下，0 = 抬起 */
 
-/* touch events */
+/* 触摸事件 */
 int hp_event_touch_count(const hp_event *ev);
-/* item type (HP_TOUCH_*) or 0; fills x/y (screen pixels) */
+/* 触点类型（HP_TOUCH_*）或 0；填充 x/y（屏幕像素） */
 int hp_event_touch(const hp_event *ev, int i, int *x, int *y);
 
-/* ---- physical scan codes (HP Prime G1 keyboard) --------------------------
- * Verified against the full scan-code table (matrix SCANCODE(row,col) ->
- * device key id, hardware-verified):
+/* ---- 物理扫描码（HP Prime G1 键盘）------------------------------------
+ * 对照完整扫描码表核实（矩阵 SCANCODE(row,col) -> 设备键 id，已硬件
+ * 验证）：
  *   (0,0)=on 0x83   (1,0)=eex 0x50   (1,1)=0 0x30   (1,2)=divide 0x54
  *   (1,3)=mul 0x58  (1,4)=minus 0xB7 (1,5)=add 0xB9  (1,6)=space 0x20
  *   (1,7)=left 0x02 (2,0)=backspace 0x0C (2,1)=define 0x44 (2,2)=units 0x43
@@ -81,8 +79,8 @@ int hp_event_touch(const hp_event *ev, int i, int *x, int *y);
  *   (5,7)=help 0x95 (6,0)=comma 0x4F (6,1)=8 0x52 (6,2)=7/Q 0x51
  *   (6,3)=6 0x57 (6,4)=5 0x56 (6,5)=4 0x55 (6,6)=3 0x33 (6,7)=2 0x5A
  *   (7,0)=enter 0x0D (7,1)=right 0x04
- * NOTE: the letter keys are the physical number/symbol keys (alpha layer),
- * e.g. 'q' is the 7/Q key = 0x51.
+ * 注意：字母键就是物理的数字/符号键（alpha 层），例如 'q' 是 7/Q 键
+ * = 0x51。
  */
 #define HP_KEY_ESC       0x01
 #define HP_KEY_LEFT      0x02
@@ -94,7 +92,7 @@ int hp_event_touch(const hp_event *ev, int i, int *x, int *y);
 #define HP_KEY_SPACE     0x20
 #define HP_KEY_ON        0x83   /* ON/Cancel */
 #define HP_KEY_SHIFT     0x8B
-#define HP_KEY_Q         0x51   /* 7/Q key: 'q' in alpha mode */
+#define HP_KEY_Q         0x51   /* 7/Q 键：alpha 模式下为 'q' */
 #define HP_KEY_F1        0x91   /* symb */
 #define HP_KEY_F2        0xB2   /* plot */
 #define HP_KEY_F3        0xB3   /* num  */

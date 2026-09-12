@@ -5,24 +5,23 @@
 #include "hp_fonts.h"
 #include "hp_string.h"
 
-/* ---- graphics library self-test panel ----
- * Draws every primitive of hp_gfx.c / hp_fonts.h onto the LCD and verifies
- * each one by reading pixels back with hp_get_pixel().  Results are shown
- * as green/red marks on screen ("T1..T15") and printed to the console
- * (final line "GFXTEST <pass>/<total>" for scripted checks).
+/* ---- 图形库自检面板 ----
+ * 把 hp_gfx.c / hp_fonts.h 的每个图元画到 LCD 上，并用 hp_get_pixel()
+ * 读回像素逐个验证。结果显示为屏幕上的绿/红标记（"T1..T15"）并打印到
+ * 控制台（末行 "GFXTEST <pass>/<total>" 供脚本检查）。
  *
- * Covered: clear, pixel, fill_rect, rect, fill_circle, circle,
- * fill_triangle, triangle, hline, vline, line, text, text_bg,
- * proportional/monospace fonts, GROB (new/dims/select/blit/free).
+ * 覆盖：clear、pixel、fill_rect、rect、fill_circle、circle、
+ * fill_triangle、triangle、hline、vline、line、text、text_bg、
+ * 比例/等宽字体、GROB（new/dims/select/blit/free）。
  *
- * ENTER reruns the whole panel, q / ESC / ON exits.
+ * ENTER 重跑整个面板，q / ESC / ON 退出。
  */
 
 #define NT 15
 
 static int g_pass;
 
-/* record one test result: console tag + on-screen mark */
+/* 记录一项测试结果：控制台标签 + 屏幕标记 */
 static void ok(int i, int cond, const char *name)
 {
     int col = ((i - 1) % 6) * 52 + 4;
@@ -50,60 +49,60 @@ static void run_all(void)
     g_pass = 0;
     hp_grob_select(NULL);
 
-    /* T1 clear: both corners must be black afterwards */
+    /* T1 clear：清除后两个角必须为黑 */
     hp_clear(HP_BLACK);
     hp_text(4, 2, "PRIMETCC GFX TEST", HP_WHITE);
     ok(1, px(0, 0) == HP_BLACK && px(319, 239) == HP_BLACK, "CLEAR");
 
-    /* T2 pixel: set + readback, neighbour untouched */
+    /* T2 pixel：写入 + 读回，相邻像素不受影响 */
     hp_pixel(310, 5, HP_WHITE);
     ok(2, px(310, 5) == HP_WHITE && px(309, 5) == HP_BLACK, "PIXEL");
 
-    /* T3 fill_rect: interior filled, outside corner untouched */
+    /* T3 fill_rect：内部已填充，外部角未受影响 */
     hp_fill_rect(20, 16, 60, 30, HP_BLUE);
     ok(3, px(50, 31) == HP_BLUE && px(19, 15) == HP_BLACK &&
           px(80, 46) == HP_BLACK, "FILLRECT");
 
-    /* T4 rect outline: edges drawn, interior NOT filled */
+    /* T4 rect 边框：边已绘制，内部 NOT 填充 */
     hp_rect(100, 16, 60, 30, HP_GREEN);
     ok(4, px(130, 16) == HP_GREEN && px(100, 45) == HP_GREEN &&
           px(130, 31) == HP_BLACK, "RECT");
 
-    /* T5 fill_circle: centre filled, just outside radius empty */
+    /* T5 fill_circle：圆心已填充，半径之外为空 */
     hp_fill_circle(210, 31, 14, HP_MAGENTA);
     ok(5, px(210, 31) == HP_MAGENTA && px(226, 31) != HP_MAGENTA &&
           px(210, 14) != HP_MAGENTA, "FILLCIR");
 
-    /* T6 circle outline: right vertex drawn, centre empty */
+    /* T6 circle 空心：右顶点已绘制，圆心为空 */
     hp_circle(290, 31, 14, HP_CYAN);
     ok(6, px(304, 31) == HP_CYAN && px(276, 31) == HP_CYAN &&
           px(290, 31) == HP_BLACK, "CIRCLE");
 
-    /* T7 fill_triangle: interior orange, outside below base empty */
+    /* T7 fill_triangle：内部橙色，底边之下为空 */
     hp_fill_triangle(20, 90, 100, 90, 60, 56, HP_ORANGE);
     ok(7, px(60, 78) == HP_ORANGE && px(60, 91) == HP_BLACK &&
           px(19, 90) == HP_BLACK, "FILLTRI");
 
-    /* T8 triangle outline: base midpoint + apex vertex on the edge */
+    /* T8 triangle 空心：底边中点 + 顶点在边上 */
     hp_triangle(112, 90, 152, 90, 132, 56, HP_YELLOW);
     ok(8, px(132, 90) == HP_YELLOW && px(132, 56) == HP_YELLOW &&
           px(132, 73) == HP_BLACK, "TRI");
 
-    /* T9 hline: inside drawn, one past both ends empty */
+    /* T9 hline：内部已绘制，两端各外一格为空 */
     hp_hline(160, 73, 80, HP_CYAN);
     ok(9, px(199, 73) == HP_CYAN && px(159, 73) != HP_CYAN &&
           px(240, 73) != HP_CYAN, "HLINE");
 
-    /* T10 vline: same for vertical spans */
+    /* T10 vline：竖向同理 */
     hp_vline(250, 56, 34, HP_RED);
     ok(10, px(250, 72) == HP_RED && px(250, 55) != HP_RED &&
            px(250, 91) != HP_RED, "VLINE");
 
-    /* T11 line: Bresenham endpoints land exactly */
+    /* T11 line：Bresenham 两端点精确落位 */
     hp_line(266, 88, 310, 56, HP_WHITE);
     ok(11, px(266, 88) == HP_WHITE && px(310, 56) == HP_WHITE, "LINE");
 
-    /* T12 text: at least one lit pixel in the glyph box */
+    /* T12 text：字形盒内至少有一个点亮的像素 */
     hp_text(20, 108, "HELLO GFX", HP_WHITE);
     cnt = 0;
     for (y = 108; y < 116; y++)
@@ -111,12 +110,12 @@ static void run_all(void)
             if (px(x, y) == HP_WHITE) cnt++;
     ok(12, cnt > 8, "TEXT");
 
-    /* T13 text_bg: background cell fully painted (gap column check) */
+    /* T13 text_bg：背景单元完全涂满（检查间隔列） */
     hp_text_bg(110, 108, "TEXT BG", HP_BLACK, HP_YELLOW);
     ok(13, px(110 + 2 * 6 + 5, 111) == HP_YELLOW &&
            px(110 + hp_text_w("TEXT BG") - 1, 115) == HP_YELLOW, "TEXTBG");
 
-    /* T14 fonts: mono 16px glyphs must light up the box */
+    /* T14 fonts：mono 16px 字形必须点亮盒子 */
     hp_font_draw(hp_font_mono(16), 20, 126, "FONT 16", HP_GREEN);
     cnt = 0;
     for (y = 124; y < 150; y++)
@@ -129,8 +128,8 @@ static void run_all(void)
         }
     ok(14, cnt > 40, "FONT");
 
-    /* T15 GROB: dims via accessors, draw off-screen, blit (screen AND
-     * grob-to-grob -- blit now follows the current draw target), free */
+    /* T15 GROB：用访问器取尺寸，离屏绘制，blit（到屏幕 AND
+     * grob 到 grob——blit 现在跟随当前绘制目标），释放 */
     g = hp_grob_new(80, 40);
     tw = hp_target_w();
     th = hp_target_h();
@@ -142,30 +141,30 @@ static void run_all(void)
         hp_fill_rect(10, 10, 20, 15, HP_RED);
         hp_rect(0, 0, hp_grob_w(g), hp_grob_h(g), HP_WHITE);
         hp_grob_select(NULL);
-        hp_grob_blit(g, 225, 116);          /* grob -> screen */
+        hp_grob_blit(g, 225, 116);          /* grob -> 屏幕 */
         b = hp_grob_new(40, 20);
         if (b) {
-            hp_grob_select(b);              /* now blit lands in b */
+            hp_grob_select(b);              /* 现在 blit 落在 b 中 */
             hp_clear(HP_GRAY);
             hp_grob_blit(g, 0, 0);
             n = n && hp_get_pixel(15, 15) == HP_RED &&
                      hp_get_pixel(5, 5) == HP_GRAY;
             hp_grob_select(NULL);
-            hp_grob_blit(b, 152, 94);       /* b -> screen */
+            hp_grob_blit(b, 152, 94);       /* b -> 屏幕 */
             hp_grob_free(b);
         }
     }
     if (g)
         hp_grob_free(g);
     ok(15, n && tw == 320 && th == 240 &&
-           px(240, 131) == HP_RED &&            /* blitted red block   */
-           px(228, 119) == HP_GRAY &&           /* grob background     */
-           px(225, 116) == HP_WHITE &&          /* blitted border      */
-           px(167, 109) == HP_RED &&            /* b's red block       */
-           px(160, 101) == HP_GRAY &&           /* b's background      */
+           px(240, 131) == HP_RED &&            /* blit 过去的红块  */
+           px(228, 119) == HP_GRAY &&           /* grob 背景        */
+           px(225, 116) == HP_WHITE &&          /* blit 过去的边框  */
+           px(167, 109) == HP_RED &&            /* b 的红块         */
+           px(160, 101) == HP_GRAY &&           /* b 的背景         */
            hp_target_w() == 320 && hp_target_h() == 240, "GROB");
 
-    /* summary + help */
+    /* 汇总 + 帮助 */
     prints("----------------\n");
     printf("GFXTEST %d/%d\n", g_pass, NT);
     if (g_pass == NT) {

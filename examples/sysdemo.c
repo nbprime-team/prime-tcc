@@ -5,14 +5,14 @@
 #include "hp_sys.h"
 #include "hp_fonts.h"
 
-/* ---- system-library test panel ----
- * Runs the hp_sys functions (memory / heap / lcd / debug device)
- * and draws the results on the LCD with the custom fonts: Montserrat
- * (proportional) for labels, Cascadia Code (monospace) for values.
- * Every step prints an Sx marker to the console FIRST, so if the device
- * reboots mid-test, the crash gate shows exactly which call died.
- * ENTER (0x0D) re-runs the panel; q (0x51) / ON (0x83) / ESC (0x01) exit.
- * This is the default demo embedded in calc/main.py's PRIME-C-CODE section.
+/* ---- 系统库测试面板 ----
+ * 运行 hp_sys 各函数（内存 / 堆 / lcd / 调试设备），并用自定义字体把
+ * 结果显示在 LCD 上：标签用 Montserrat（比例），数值用 Cascadia Code
+ * （等宽）。
+ * 每一步都先向控制台打印一个 Sx 标记，因此若设备在测试中途重启，
+ * 崩溃闸门能显示究竟是哪个调用挂掉。
+ * ENTER (0x0D) 重跑面板；q (0x51) / ON (0x83) / ESC (0x01) 退出。
+ * 这是 calc/main.py 的 PRIME-C-CODE 段内嵌的默认演示。
  */
 
 #define SYS_KEY_Q   HP_KEY_Q
@@ -25,11 +25,10 @@ static int sys_is_exit(int key)
     return key == SYS_KEY_Q || key == SYS_KEY_ON || key == SYS_KEY_ESC;
 }
 
-/* step marker: print to the console AND persist to crash.log (the console
- * is lost on reboot; crash.log survives).  Reopen with "wb+" every time
- * (the firmware fopen accepts only "rb"/"wb+") and close immediately so
- * the write is flushed -- crash.log then always holds the LAST completed
- * step, which the crash gate displays on the next run. */
+/* 步骤标记：打印到控制台，同时持久化到 crash.log（控制台在重启后
+ * 丢失；crash.log 会保留）。每次都先用 "wb+" 重新打开（固件 fopen
+ * 只接受 "rb"/"wb+"）并立即关闭以刷出写入——这样 crash.log 始终保存
+ * 最后一个完成的步骤，崩溃闸门会在下一次运行时显示它。 */
 static void sys_mark(const char *s)
 {
     unsigned fd;
@@ -43,10 +42,9 @@ static void sys_mark(const char *s)
     }
 }
 
-/* one row: Montserrat 16 label + SCP 16 value, drawn on the LCD AND
- * echoed to the console so memory figures can be watched across runs
- * (heap_free / max_alloc decline ~0.7MB per run -- firmware allocator
- * does not return the compile working set; see README "运行内存") */
+/* 一行：Montserrat 16 标签 + SCP 16 数值，绘制到 LCD，同时回显到
+ * 控制台，以便跨多次运行观察内存数值（heap_free / max_alloc 每轮运行
+ * 下降约 0.7MB——固件分配器不归还编译工作集；见 README“运行内存”） */
 static void sys_row(int y, const char *label, const char *value)
 {
     hp_font_draw(hp_font_prop(16), 8, y, label, HP_CYAN);
@@ -124,7 +122,7 @@ int main(void) {
                 return 0;
             }
             if (key == SYS_KEY_RUN)
-                break;                 /* re-run the panel */
+                break;                 /* 重跑面板 */
         }
     }
 }

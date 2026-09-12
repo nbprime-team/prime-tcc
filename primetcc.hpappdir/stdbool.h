@@ -1,9 +1,9 @@
 /*
- * stdbool.h -- C99 boolean support for TCC on the HP Prime.
+ * stdbool.h —— HP Prime 上 TCC 的 C99 布尔支持。
  *
- * TCC itself understands _Bool natively; this header (per C99 7.16)
- * just provides the spellings every C99 program expects.  prime.h
- * includes it, so plain `bool b = true;` works out of the box.
+ * TCC 本身原生支持 _Bool；本头文件（按 C99 7.16）只是提供每个 C99
+ * 程序都期望的写法。prime.h 会包含它，因此直接写 `bool b = true;`
+ * 即可开箱使用。
  */
 #ifndef _STDBOOL_H
 #define _STDBOOL_H

@@ -6,24 +6,21 @@
 #include "hp_string.h"
 #include "hp_gui.h"
 
-/* ---- terminal-style calculator ----
- * Keyboard-driven expression calculator with a scrollable HISTORY, like
- * a REPL: every evaluation appends "> <expr>" and "= <result>" lines to
- * an on-screen history; UP/DOWN scroll it.  Rendered through hp_gui's
- * GROB back buffer (hp_gui_begin/end) so nothing flickers.
+/* ---- 终端风计算器 ----
+ * 键盘驱动的表达式计算器，带可滚动的 HISTORY，像个 REPL：每次求值都
+ * 把 "> <expr>" 和 "= <result>" 两行追加到屏幕历史；UP/DOWN 滚动它。
+ * 经 hp_gui 的 GROB 后备缓冲渲染（hp_gui_begin/end），因此不会闪烁。
  *
- * Keys (both ASCII and matrix scan codes are accepted, see
- * hp_gui_key_char): digits/operators/( ) , ^ space type text; the
- * SIN/COS/TAN/LN/LOG keys insert their names, the x^2 key inserts
- * "sqrt(", EEX inserts "e"; ENTER evaluates, BACKSPACE deletes,
- * LEFT/RIGHT move the cursor, UP/DOWN scroll history, q/ESC/ON exit.
- * Every key press is echoed to the console as "KEY <code>" -- if a key
- * does not respond on your calculator, the console tells you the real
- * scan code and the table can be updated.
+ * 按键（纯 ASCII 与矩阵扫描码都接受，见 hp_gui_key_char）：数字/
+ * 运算符/( ) , ^ 空格输入文本；SIN/COS/TAN/LN/LOG 键插入对应名字，
+ * x^2 键插入 "sqrt("，EEX 插入 "e"；ENTER 求值，BACKSPACE 删除，
+ * LEFT/RIGHT 移光标，UP/DOWN 滚历史，q/ESC/ON 退出。
+ * 每次按键都以 "KEY <code>" 回显到控制台——若某个键在你的计算器上
+ * 无响应，控制台会告知真实的扫描码，据此更新表。
  *
- * Functions: sin cos tan ln log sqrt abs floor ceil exp pow(a,b), the
- * constants pi and e; operators + - * / % ^ (precedence, parentheses,
- * unary minus).  Console prints "CALC <expr>=<result>" per evaluation.
+ * 函数：sin cos tan ln log sqrt abs floor ceil exp pow(a,b)，常量 pi 与 e；
+ * 运算符 + - * / % ^（有优先级、括号、一元负号）。每次求值控制台打印
+ * "CALC <expr>=<result>"。
  */
 
 #define EXPR_MAX 48
@@ -35,11 +32,11 @@ static char g_expr[EXPR_MAX];
 static char g_res[40];
 static char g_hist[HIST_MAX][HIST_LEN];
 static int  g_hist_n = 0;
-static int  g_scroll = 0;         /* 0 = newest line */
+static int  g_scroll = 0;         /* 0 = 最新行 */
 static hp_gui_widget ws[4];
 static int  g_exit = 0;
 
-/* ---- history ring ---- */
+/* ---- 历史环形缓冲 ---- */
 static void hist_add(const char *s)
 {
     int n = 0;
@@ -51,7 +48,7 @@ static void hist_add(const char *s)
         g_hist[g_hist_n % HIST_MAX][n] = 0;
     }
     g_hist_n++;
-    g_scroll = 0;                 /* jump to the newest line */
+    g_scroll = 0;                 /* 跳到最新行 */
 }
 
 static const char *hist_get(int back)
@@ -62,15 +59,14 @@ static const char *hist_get(int back)
     return g_hist[idx % HIST_MAX];
 }
 
-/* ---- tiny expression evaluator: recursive descent ----
+/* ---- 微型表达式求值器：递归下降 ----
  *   expr  := term (('+'|'-') term)*
  *   term  := unary (('*'|'/'|'%') unary)*
  *   unary := '-' unary | power
- *   power := primary ('^' unary)?            (right associative)
+ *   power := primary ('^' unary)?            （右结合）
  *   primary := number | ident | '(' expr ')'
- * NOTE: function dispatch uses a plain switch -- TCC's ARM backend
- * mis-compiles indirect calls through a pointer table when the argument
- * is a double (see README), so no function-pointer tables here.
+ * 注意：函数分派用普通 switch——当参数是 double 时，TCC 的 ARM 后端会
+ * 错误编译经指针表的间接调用（见 README），所以这里不用函数指针表。
  */
 static const char *g_s;
 static int g_i, g_err;
@@ -224,7 +220,7 @@ static double calc_eval(const char *s, int *err)
     return v;
 }
 
-/* ---- evaluation -> history + console ---- */
+/* ---- 求值 -> 历史 + 控制台 ---- */
 static void hist_line(char first, const char *rest)
 {
     char line[HIST_LEN];
@@ -252,7 +248,7 @@ static void do_eval(void)
     expr[i] = 0;
     v = calc_eval(expr, &err);
     if (err) {
-        hist_line('E', expr);            /* "E <expr>" = error line */
+        hist_line('E', expr);            /* "E <expr>" = 错误行 */
         prints("CALC ERR ");
         prints(expr);
         prints("\n");
@@ -260,16 +256,16 @@ static void do_eval(void)
         ws[0].cur = 0;
         return;
     }
-    ftoa(v, g_res, -1);                  /* AUTO: 8 -> "8", 0.5 -> "0.5",
-                                          * 1e20 -> "1e+20" (no padding) */
+    ftoa(v, g_res, -1);                  /* 自动：8 -> "8"，0.5 -> "0.5"，
+                                          * 1e20 -> "1e+20"（无填充） */
     hist_line('>', expr);
     hist_line('=', g_res);
     printf("CALC %s=%s\n", (unsigned long)expr, (unsigned long)g_res);
-    g_expr[0] = 0;                       /* successful eval clears input */
+    g_expr[0] = 0;                       /* 求值成功则清空输入 */
     ws[0].cur = 0;
 }
 
-/* ---- buttons ---- */
+/* ---- 按钮 ---- */
 static void btn_clear(hp_gui_widget *w, void *ud)
 {
     g_expr[0] = 0;
@@ -290,17 +286,17 @@ static void btn_exit(hp_gui_widget *w, void *ud)
     (void)w; (void)ud;
 }
 
-/* dedicated function keys insert their names into the input */
+/* 专用功能键把名字插入输入框 */
 static const char *func_insert(int k)
 {
     switch (k) {
-    case 0x47: return "sin(";   /* sin key   */
-    case 0x48: return "cos(";   /* cos key   */
-    case 0x49: return "tan(";   /* tan key   */
-    case 0x4A: return "ln(";    /* ln key    */
-    case 0x4B: return "log(";   /* log key   */
-    case 0x4C: return "sqrt(";  /* x^2 key   */
-    case 0x50: return "e";      /* EEX key   */
+    case 0x47: return "sin(";   /* sin 键   */
+    case 0x48: return "cos(";   /* cos 键   */
+    case 0x49: return "tan(";   /* tan 键   */
+    case 0x4A: return "ln(";    /* ln 键    */
+    case 0x4B: return "log(";   /* log 键   */
+    case 0x4C: return "sqrt(";  /* x^2 键   */
+    case 0x50: return "e";      /* EEX 键   */
     }
     return 0;
 }
@@ -308,9 +304,9 @@ static const char *func_insert(int k)
 static void draw_history(void)
 {
     int start, end, k, y;
-    /* terminal layout: oldest line at the TOP, newest at the bottom, so
-     * each block reads "> expr" above "= result".  g_scroll shifts the
-     * window back in time (UP = older). */
+    /* 终端布局：最早的行在顶部，最新的在底部，因此每一块都把
+     * "> expr" 读在 "= result" 上方。g_scroll 把窗口向过去平移
+     * （UP = 更旧）。 */
     end = g_hist_n - g_scroll;
     start = end - HIST_ROWS;
     if (start < 0)
@@ -340,12 +336,12 @@ int main(void)
     ws[1] = (hp_gui_widget)HP_GUI_BUTTON_INIT(4, 206, 60, 24, "C", 1, btn_clear, 0);
     ws[2] = (hp_gui_widget)HP_GUI_BUTTON_INIT(68, 206, 60, 24, "=", 2, btn_eval, 0);
     ws[3] = (hp_gui_widget)HP_GUI_BUTTON_INIT(132, 206, 60, 24, "EXIT", 3, btn_exit, 0);
-    ws[0].on_click = btn_eval;           /* ENTER on the edit evaluates */
-    ws[0].state = 1;                     /* input always focused */
+    ws[0].on_click = btn_eval;           /* 编辑框上按 ENTER 即求值 */
+    ws[0].state = 1;                     /* 输入始终聚焦 */
 
     printf("CALC start\n", 0, 0, 0, 0);
     for (;;) {
-        hp_gui_begin();                  /* GROB back buffer: no flicker */
+        hp_gui_begin();                  /* GROB 后备缓冲：无闪烁 */
         hp_font_draw(hp_font_prop(16), 4, 2, "PRIMETCC CALC", HP_WHITE);
         if (g_hist_n == 0)
             hp_font_draw(hp_font_mono(16), 4, 18,
@@ -358,11 +354,11 @@ int main(void)
         t = hp_poll_event(&ev);
         if (t == HP_EV_KEY && hp_event_key_down(&ev)) {
             int k = hp_event_key(&ev);
-            /* echo the raw code: if a key does not respond on your
-             * calculator, the console reports what it really sends */
+            /* 回显原始码：若某个键在你的计算器上无响应，控制台会报告
+             * 它实际发出的东西 */
             printf("KEY %02x\n", (unsigned long)k, 0, 0, 0);
-            /* exit = ESC / ON only.  NOTE: do NOT add 0x51 here -- the
-             * 7/Q key reports 0x51 and is the digit 7 on the Prime. */
+            /* 退出 = 仅 ESC / ON。注意：不要把 0x51 加进来——
+             * 7/Q 键报告为 0x51，在 Prime 上它是数字 7。 */
             if (k == 0x01 || k == 0x1B || k == 0x83) {
                 hp_input_remove();
                 printf("GUI_DONE\n", 0, 0, 0, 0);
@@ -410,9 +406,8 @@ int main(void)
                 }
             }
         } else if (t == HP_EV_TOUCH) {
-            /* console echo: if a tap still lands nowhere on the real
-             * calculator, this line shows the coordinates the firmware
-             * actually reported (survives ESC-exit via PRIMELOG) */
+            /* 控制台回显：若在真机上某次点击仍落在空处，这行会显示
+             * 固件实际报告的坐标（经 PRIMELOG 在 ESC 退出后仍保留） */
             if (hp_event_touch_count(&ev) > 0) {
                 int tx = 0, ty = 0;
                 hp_event_touch(&ev, 0, &tx, &ty);
@@ -422,11 +417,10 @@ int main(void)
                 printf("TOUCH release\n", 0, 0, 0, 0);
             }
             hp_gui_handle(ws, 4, t, &ev);
-            /* terminal style: keep the input focused.  NEVER reset the
-             * button states here -- hp_gui_handle marks the pressed
-             * button (state=2) on press and fires it on release through
-             * exactly that state; zeroing it after the press is why the
-             * on-screen buttons could never fire. */
+            /* 终端风格：保持输入聚焦。绝不要在这里复位按钮状态——
+             * hp_gui_handle 在按下时把被按按钮标为 state=2，并在抬起时
+             * 正是靠这个状态触发它；按下后把它清零，正是一度令屏幕
+             * 按钮无法触发的原因。 */
             ws[0].state = 1;
         }
         if (g_exit) {

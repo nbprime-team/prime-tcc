@@ -16,8 +16,8 @@
 TOPDIR  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # 所有构建产物集中于此（此前散落在仓库根目录，难以分辨）
 OUTDIR  := $(TOPDIR)/prebuilt
-# C 核心库（用户程序头文件、链接脚本、SVC 包装）统一在 toolchain/sdk/
-SDK     ?= $(TOPDIR)/../toolchain/sdk
+# C 核心库（用户程序头文件、实现、链接脚本、SVC 包装）统一在 toolchain/sdk/
+SDK     ?= $(TOPDIR)/../toolchain
 TCCSRC  := $(TOPDIR)/src/tinycc-mob
 HOSTTCC := $(TOPDIR)/host-tcc/bin/tcc
 
@@ -51,7 +51,7 @@ else
 SYSINC  := -isystem /usr/lib/arm-none-eabi/include
 endif
 CFLAGS  := $(ARCH) -ffreestanding -fPIC -O0 -g -Wall \
-           -I$(TOPDIR)/hp/include -I$(TOPDIR)/hp -I$(TOPDIR)/rt -I$(TCCSRC) \
+           -I$(TOPDIR)/hp/include -I$(TOPDIR)/hp -I$(SDK)/sdk -I$(TCCSRC) \
            -DTCC_TARGET_ARM -DCONFIG_TCC_STATIC -DTCC_ARM_EABI -DTCC_ARM_SOFT_FLOAT -DHP_PRIME $(SYSINC)
 ASFLAGS := -mcpu=arm926ej-s
 
@@ -106,9 +106,9 @@ $(OUTDIR)/obj/hp_vsnprintf.o: hp/hp_vsnprintf.c hp/hp_libc.h | $(OUTDIR)/obj
 	$(ARMCC) $(CFLAGS) -c hp/hp_vsnprintf.c -o $@
 
 # RESIDENT input-hook service: compiled INTO $(OUTDIR)/tcc.elf so the firmware
-# get_event slot always points at never-freed code (see rt/hp_input_svc.c)
-$(OUTDIR)/obj/hp_input_svc.o: rt/hp_input_svc.c rt/hp_input_svc.h hp/hp_libc.h | $(OUTDIR)/obj
-	$(ARMCC) $(CFLAGS) -c rt/hp_input_svc.c -o $@
+# get_event slot always points at never-freed code (see $(SDK)/sdk/hp_input_svc.c)
+$(OUTDIR)/obj/hp_input_svc.o: $(SDK)/sdk/hp_input_svc.c $(SDK)/sdk/hp_input_svc.h hp/hp_libc.h | $(OUTDIR)/obj
+	$(ARMCC) $(CFLAGS) -c $(SDK)/sdk/hp_input_svc.c -o $@
 
 # TCC's configure generates config.h for the ARM target (one-time).
 $(TCCSRC)/config.h: $(TCCSRC)/configure
@@ -120,13 +120,16 @@ $(TCCSRC)/config.h: $(TCCSRC)/configure
 # hp_math + hp_string) prebuilt with GCC.  TCC on the calculator then only
 # compiles the user's code.c (was ~39 KB of runtime sources per compile)
 # and links the rest -- on-calc compile time drops by roughly 4x.
-RT_CORE_SRCS := rt/hp_rt.c rt/hp_gfx.c rt/hp_input.c rt/hp_math.c rt/hp_string.c \
-	rt/hp_fonts.c rt/hp_fonts_data.c rt/hp_sys.c \
-	rt/hp_fixmath.c rt/hp_random.c rt/hp_codec.c rt/hp_gui.c rt/hp_icall.c
-RT_CORE_HDRS := rt/hp_gfx.h rt/hp_input.h rt/hp_math.h rt/hp_string.h \
-	rt/hp_fixmath.h rt/hp_random.h rt/hp_codec.h rt/hp_gui.h rt/hp_icall.h
+RT_CORE_SRCS := $(SDK)/sdk/hp_rt.c $(SDK)/sdk/hp_gfx.c $(SDK)/sdk/hp_input.c \
+	$(SDK)/sdk/hp_math.c $(SDK)/sdk/hp_string.c \
+	$(SDK)/sdk/hp_fonts.c $(SDK)/sdk/hp_fonts_data.c $(SDK)/sdk/hp_sys.c \
+	$(SDK)/sdk/hp_fixmath.c $(SDK)/sdk/hp_random.c $(SDK)/sdk/hp_codec.c \
+	$(SDK)/sdk/hp_gui.c $(SDK)/sdk/hp_icall.c
+RT_CORE_HDRS := $(SDK)/sdk/hp_gfx.h $(SDK)/sdk/hp_input.h $(SDK)/sdk/hp_math.h \
+	$(SDK)/sdk/hp_string.h $(SDK)/sdk/hp_fixmath.h $(SDK)/sdk/hp_random.h \
+	$(SDK)/sdk/hp_codec.h $(SDK)/sdk/hp_gui.h $(SDK)/sdk/hp_icall.h
 RT_CORE_FLAGS := -O2 -ffreestanding -fPIC -mcpu=arm926ej-s -marm -mfloat-abi=soft \
-	-I$(TOPDIR)/rt -Wall -fno-optimize-sibling-calls
+	-I$(SDK)/sdk -Wall -fno-optimize-sibling-calls
 $(OUTDIR)/rt_core.o: $(RT_CORE_SRCS) $(RT_CORE_HDRS) | $(OUTDIR)/rt_svc.o
 	@rm -rf $(OUTDIR)/obj/corex && mkdir -p $(OUTDIR)/obj/corex
 	@set -e; for f in $(RT_CORE_SRCS); do \
@@ -137,7 +140,7 @@ $(OUTDIR)/rt_core.o: $(RT_CORE_SRCS) $(RT_CORE_HDRS) | $(OUTDIR)/rt_svc.o
 
 # $(OUTDIR)/rt_math.o: openlibm (BSD) prebuilt with -O2; the transcendental + simple
 # functions are renamed to hp_* via -D so they plug into hp_math.h.
-OLM := $(TOPDIR)/rt/openlibm
+OLM := $(SDK)/sdk/openlibm
 OLM_FLAGS := -O2 -ffreestanding -fPIC -mcpu=arm926ej-s -marm -mfloat-abi=soft -I$(OLM)
 OLM_RENAMES := -Dsin=hp_sin -Dcos=hp_cos -Dtan=hp_tan -Datan=hp_atan \
 	-Datan2=hp_atan2 -Dasin=hp_asin -Dacos=hp_acos -Dexp=hp_exp \
@@ -157,15 +160,15 @@ $(OUTDIR)/rt_math.o: $(addprefix $(OLM)/,$(OLM_SRCS)) $(OLM)/cdefs-compat.h
 	@mv $(OLM)/*.o $(OUTDIR)/obj/olmx/
 	@$(ARMLD) -r $(OUTDIR)/obj/olmx/*.o -o $(OUTDIR)/rt_math.o
 	@echo "==> $(OUTDIR)/rt_math.o built"
-	@$(ARMCC) -c rt/rt_softfloat.c -o $(OUTDIR)/obj/olmx/rt_softfloat.o 2>/dev/null || true
+	@$(ARMCC) -c $(SDK)/sdk/rt_softfloat.c -o $(OUTDIR)/obj/olmx/rt_softfloat.o 2>/dev/null || true
 
-$(OUTDIR)/rt_svc.o: rt/rt_svc.s
-	$(ARMAS) $(ASFLAGS) rt/rt_svc.s -o $@
+$(OUTDIR)/rt_svc.o: $(SDK)/sdk/rt_svc.s
+	$(ARMAS) $(ASFLAGS) $(SDK)/sdk/rt_svc.s -o $@
 
 # __aeabi_* helpers extracted from libgcc (division, 64-bit ops)
 $(OUTDIR)/rt_aeabi.o: | $(OUTDIR)/rt_svc.o
 	@rm -rf $(OUTDIR)/obj/libgccx && mkdir -p $(OUTDIR)/obj/libgccx
-	@$(ARMCC) $(CFLAGS) -c rt/rt_softfloat.c -o $(OUTDIR)/obj/libgccx/rt_softfloat.o
+	@$(ARMCC) $(CFLAGS) -c $(SDK)/sdk/rt_softfloat.c -o $(OUTDIR)/obj/libgccx/rt_softfloat.o
 	@cd $(OUTDIR)/obj/libgccx && $(ARMAR) x $$($(ARMCC) -print-libgcc-file-name) \
 	    _divsi3.o _udivsi3.o _modsi3.o _umodsi3.o _dvmd_tls.o \
 	    _clzsi2.o _clzdi2.o _ctzsi2.o _ctzdi2.o \
@@ -196,22 +199,29 @@ $(OUTDIR)/obj:
 	mkdir -p $(OUTDIR)/obj
 
 clean:
-	rm -rf $(OUTDIR)
+	rm -rf $(OUTDIR)/obj
 	rm -f $(TCCSRC)/config.h
 
 # Rebuild and copy the flat deployment directory (no subfolders - the
 # calculator does not support them).  Only code.c is TCC-compiled on the
 # calculator; the runtime is prebuilt ($(OUTDIR)/rt_core.o) and linked by TCC.
-deploy: $(OUTDIR)/tcc.elf $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o $(OUTDIR)/rt_math.o
-	@mkdir -p ../primetcc.hpappdir
-	@rm -f ../primetcc.hpappdir/hp_rt.c ../primetcc.hpappdir/hp_gfx.c \
-	    ../primetcc.hpappdir/hp_input.c ../primetcc.hpappdir/hp_math.c \
-	    ../primetcc.hpappdir/hp_string.c
-	@cp $(OUTDIR)/tcc.elf calc/main.py $(SDK)/prime.h $(SDK)/stdbool.h $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o $(OUTDIR)/rt_math.o \
-	    rt/hp_gfx.h rt/hp_input.h rt/hp_math.h rt/hp_string.h rt/hp_fonts.h \
-	    rt/hp_sys.h rt/hp_fixmath.h rt/hp_random.h rt/hp_codec.h rt/hp_gui.h \
-	    rt/hp_icall.h rt/hp_image.h \
-	    ../primetcc.hpappdir/
-	@echo "==> deployed to ../primetcc.hpappdir/"
+# 部署：从 prebuilt/ 与 toolchain/sdk 拷入实机应用包目录（hpappdir 不自带副本）。
+# 不依赖构建目标，产物已入库时可直接运行（缺源码时 make all 无法完成，见 STATUS.md §2）。
+deploy:
+	@for f in tcc.elf rt_core.o rt_svc.o rt_aeabi.o rt_math.o; do \
+	    test -f $(OUTDIR)/$$f || { \
+	        echo "deploy: 缺少 $(OUTDIR)/$$f（需先 make all；缺失源码见 STATUS.md §2）"; exit 1; }; \
+	done
+	@mkdir -p primetcc.hpappdir
+	@rm -f primetcc.hpappdir/hp_*.c primetcc.hpappdir/code.c \
+	    primetcc.hpappdir/code.elf primetcc.hpappdir/probe5.bin \
+	    primetcc.hpappdir/stage.txt
+	@cp $(OUTDIR)/tcc.elf $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o $(OUTDIR)/rt_math.o \
+	    calc/main.py $(SDK)/sdk/prime.h $(SDK)/sdk/stdbool.h \
+	    $(SDK)/sdk/hp_gfx.h $(SDK)/sdk/hp_input.h $(SDK)/sdk/hp_math.h $(SDK)/sdk/hp_string.h $(SDK)/sdk/hp_fonts.h \
+	    $(SDK)/sdk/hp_sys.h $(SDK)/sdk/hp_fixmath.h $(SDK)/sdk/hp_random.h $(SDK)/sdk/hp_codec.h $(SDK)/sdk/hp_gui.h \
+	    $(SDK)/sdk/hp_icall.h $(SDK)/sdk/hp_image.h \
+	    primetcc.hpappdir/
+	@echo "==> 已部署到 primetcc.hpappdir/"
 
 .PHONY: all host test clean deploy

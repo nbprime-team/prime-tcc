@@ -3,12 +3,11 @@
 #include "hp_gfx.h"
 #include "hp_input.h"
 
-/* ---- ball demo ----
- * Double-buffered bouncing-ball animation with live keyboard/touch readout.
- * An orange ball bounces inside the screen; the last key code is shown in
- * the top-left corner (green = pressed, gray = released), touch points are
- * printed to the console.  q (0x51) / ESC (0x01) / ON (0x83) exit.
- * Source of truth for tests/harness.py's 'ball' case.
+/* ---- 弹球演示 ----
+ * 双缓冲的弹球动画，带实时键盘/触摸读数。
+ * 橙色球在屏幕内弹跳；左上角显示最近一次按键码（绿 = 按下，灰 = 抬起），
+ * 触摸点打印到控制台。q (0x51) / ESC (0x01) / ON (0x83) 退出。
+ * 是 tests/harness.py 中 'ball' 用例的基准。
  */
 
 static void show_hex(int x, int y, unsigned v, hp_color c)
@@ -31,7 +30,7 @@ int main(void) {
     bg = hp_grob_new(w, h);
     if (!bg) { printf("GROB FAIL\n"); hp_input_remove(); return 1; }
     printf("BALL start %dx%d\n", w, h);
-    printf("TW %d\n", hp_text_w("KEY:"));   /* expect 24 */
+    printf("TW %d\n", hp_text_w("KEY:"));   /* 期望 24 */
     for (;;) {
         hp_grob_select(bg);
         hp_clear(HP_BLACK);

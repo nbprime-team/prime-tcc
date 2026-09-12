@@ -1,37 +1,36 @@
 """
-main.py -- HP Prime calculator launcher for primetcc (TCC on the HP Prime).
+main.py —— primetcc（HP Prime 上的 TCC）计算器端启动器。
 
-Run on the calculator (MicroPython):
+在计算器（MicroPython）上运行：
     >>> import main
 
-Flow:
-  1. Reads the C source from this file (between PRIME-C-CODE markers) or from
-     a file given as `main.compile_file("test.c")`.
-  2. Writes it to C:\\DATA\\primetcc.hpappdir\\code.c
-  3. Loads puredoom-style tcc.elf with the shellcode loader and calls its
-     entry point with a config {magic, argc, argv} so TCC compiles
+流程：
+  1. 从本文件读取 C 源码（PRIME-C-CODE 标记之间），或从
+     `main.compile_file("test.c")` 指定的文件读取。
+  2. 写入 C:\\DATA\\primetcc.hpappdir\\code.c
+  3. 用 shellcode 加载器装载 puredoom 风格的 tcc.elf，并以配置
+     {magic, argc, argv} 调用其入口，使 TCC 把
          code.c  ->  code.elf
-     (only the user source is compiled on the calculator now; the runtime
-     hp_rt/hp_gfx/hp_input/hp_math/hp_string is prebuilt as rt_core.o and
-     linked together with rt_svc.o / rt_aeabi.o / rt_math.o).
-  4. Streams TCC's PRIMELOG output while it runs.
-  5. If code.elf was produced, loads and runs it (entry hp_entry, a pure
-     passthrough to main()) and prints its PRIMELOG output and return
-     value.  code.elf is deliberately NOT freed on exit: the OS UI thread
-     can be blocked inside the input hook at any moment, and freeing would
-     crash the calculator on the next keypress (verified on hardware).
+     （如今在计算器上只编译用户源码；运行时
+     hp_rt/hp_gfx/hp_input/hp_math/hp_string 已预编译为 rt_core.o，
+     并与 rt_svc.o / rt_aeabi.o / rt_math.o 一起链接）。
+  4. TCC 运行期间流式回显其 PRIMELOG 输出。
+  5. 若产出了 code.elf，则加载并运行它（入口 hp_entry，纯透传到
+     main()），并打印其 PRIMELOG 输出与返回值。code.elf 故意不在退出
+     时释放：OS UI 线程随时可能阻塞在输入钩子里，释放会导致下次按键
+     时计算器崩溃（已硬件验证）。
 
-Firmware notes (HP Prime G1):
-  * syscalls go through push{r0}; push{lr}; svc N (the handler returns via
-    the pushed LR); see the DOOM/PureDOOM port for the same convention.
-  * firmware API table base 0x307FBCAC (id 0x10037 = malloc, 0x1003a = free).
+固件说明（HP Prime G1）：
+  * 系统调用经 push{r0}; push{lr}; svc N（处理程序经压栈的 LR 返回）；
+    同一约定见 DOOM/PureDOOM 移植。
+  * 固件 API 表基址 0x307FBCAC（id 0x10037 = malloc，0x1003a = free）。
 """
 import ustruct as struct
 import uio
 import hpprime
 
-# colored console helpers (moreprint.py, user-provided).  On hosts / when
-# moreprint is missing, fall back to plain print so everything still works.
+# 彩色控制台辅助（moreprint.py，用户提供）。在宿主 / moreprint 缺失时
+# 退回普通 print，使一切仍可工作。
 try:
     from moreprint import p_log, p_warning, p_error, p_pass, p_out
 except Exception:
@@ -48,14 +47,14 @@ except Exception:
 
 
 def decode_bytes(b):
-    """MicroPython bytes.decode may not support the errors= argument."""
+    """MicroPython 的 bytes.decode 可能不支持 errors= 参数。"""
     try:
         return b.decode("utf-8")
     except Exception:
         return "".join(chr(x) for x in b)
 
 # ---------------------------------------------------------------------------
-# firmware debug interface + shellcode ELF loader (same as the DOOM port)
+# 固件调试接口 + shellcode ELF 加载器（与 DOOM 移植相同）
 # ---------------------------------------------------------------------------
 class PrimeDebug:
     def __init__(self, filename="debug"):
@@ -104,7 +103,7 @@ ADDR_FREE = get_addr(0x1003A)
 class ElfTools:
     @staticmethod
     def get_elf_memory_size(filename):
-        """read the ELF header, compute the total image size (max p_vaddr+p_memsz)"""
+        """读取 ELF 头，算出映像总大小（max p_vaddr+p_memsz）"""
         required_size = 0
         try:
             with uio.FileIO(filename, "rb") as f:
@@ -131,10 +130,125 @@ class ElfTools:
         return (required_size + 3) & ~3
 
     @staticmethod
+    def patch_shared_relocs(filename):
+        """把 TCC 为非 static 文件作用域变量引用生成的符号型重定位
+        （R_ARM_ABS32=2 / REL32=3）转换为 R_ARM_RELATIVE（23），并把符号值
+        折入 addend。
+
+        计算器上的 shellcode 加载器（以及模拟器）只应用 R_ARM_RELATIVE；
+        符号型条目会被静默跳过，于是保存 &global 的字面量保持为 0，首次
+        访问即崩溃（现象：'int board[8];' 会让计算器重启，而
+        'static int board[8];' 正常）。
+        ARM ABS32：final = S + A。RELATIVE：final = base + word。
+        把 S 折进该字（word += st_value）并切换类型，加载器就会恰好施加
+        base + S + A。逐字节精确：只改写被触及的条目/字（code.elf 约
+        200KB）。"""
+        try:
+            with uio.FileIO(filename, "rb") as f:
+                ehdr = f.read(52)
+                if len(ehdr) < 52 or ehdr[0:4] != b"\x7fELF":
+                    return 0
+                e_phoff = struct.unpack_from("<I", ehdr, 28)[0]
+                e_phentsize = struct.unpack_from("<H", ehdr, 42)[0]
+                e_phnum = struct.unpack_from("<H", ehdr, 44)[0]
+                loads = []
+                dyn_off = None
+                f.seek(e_phoff)
+                for _ in range(e_phnum):
+                    ph = f.read(e_phentsize)
+                    p_type = struct.unpack_from("<I", ph, 0)[0]
+                    p_off = struct.unpack_from("<I", ph, 4)[0]
+                    p_vaddr = struct.unpack_from("<I", ph, 8)[0]
+                    p_filesz = struct.unpack_from("<I", ph, 16)[0]
+                    p_memsz = struct.unpack_from("<I", ph, 20)[0]
+                    if p_type == 1:
+                        loads.append((p_vaddr, p_off, p_memsz))
+                    elif p_type == 2:
+                        dyn_off = p_off
+                if dyn_off is None:
+                    return 0
+                f.seek(dyn_off)
+                dyn = f.read(256)
+                tags = {}
+                for j in range(0, len(dyn) - 7, 8):
+                    tag, val = struct.unpack_from("<II", dyn, j)
+                    if tag == 0:
+                        break
+                    tags[tag] = val
+                if 17 not in tags or 18 not in tags or 6 not in tags:
+                    return 0            # DT_REL / DT_RELSZ / DT_SYMTAB
+                rel_off, rel_sz = tags[17], tags[18]
+                sym_off = tags[6]
+                syment = tags.get(11, 16)
+        except Exception as e:
+            p_warning("[!] reloc scan failed: " + str(e))
+            return 0
+
+        def vma2file(v):
+            for p_vaddr, p_off, p_memsz in loads:
+                if p_vaddr <= v < p_vaddr + p_memsz:
+                    return v - p_vaddr + p_off
+            return None
+
+        patched = 0
+        updates = []
+        try:
+            with uio.FileIO(filename, "rb") as f:
+                f.seek(rel_off)
+                rel = f.read(rel_sz)
+            for i in range(rel_sz // 8):
+                r_off, r_info = struct.unpack_from("<II", rel, i * 8)
+                rtype = r_info & 0xFF
+                idx = r_info >> 8
+                if rtype == 23 or idx == 0:
+                    continue
+                if rtype not in (2, 3):      # 仅 ABS32 / REL32
+                    p_warning("[!] unhandled reloc type %d at 0x%06X"
+                              % (rtype, r_off))
+                    continue
+                with uio.FileIO(filename, "rb") as f:
+                    f.seek(sym_off + idx * syment + 4)
+                    st_value = struct.unpack("<I", f.read(4))[0]
+                wpos = vma2file(r_off)
+                if wpos is None:
+                    continue
+                with uio.FileIO(filename, "rb") as f:
+                    f.seek(wpos)
+                    word = struct.unpack("<I", f.read(4))[0]
+                updates.append((rel_off + i * 8,
+                                struct.pack("<II", r_off,
+                                            (r_info & 0xFFFFFF00) | 23)))
+                updates.append((wpos,
+                                struct.pack("<I",
+                                            (word + st_value) & 0xFFFFFFFF)))
+                patched += 1
+            if patched:
+                try:
+                    with uio.FileIO(filename, "r+b") as f:
+                        for pos, blob in updates:
+                            f.seek(pos)
+                            f.write(blob)
+                except Exception:
+                    # 固件拒绝更新模式：重写整个文件
+                    with uio.FileIO(filename, "rb") as f:
+                        buf = bytearray(f.read())
+                    for pos, blob in updates:
+                        buf[pos:pos + len(blob)] = blob
+                    with uio.FileIO(filename, "wb") as f:
+                        f.write(buf)
+        except Exception as e:
+            p_error("[-] reloc patch failed: " + str(e))
+            return 0
+        if patched:
+            p_log("[*] fixed %d global-symbol reference(s) "
+                  "(ABS32 -> RELATIVE)" % patched)
+        return patched
+
+    @staticmethod
     def find_magic_addr(filename, magic, loaded_base):
-        """locate a magic string inside the loaded image, reading the ELF
-        in 4KB chunks (no full-file read; relative path only).  Runtime
-        address = base + p_vaddr + (magic_file_offset - p_offset)."""
+        """在已加载的映像中定位魔数字符串，按 4KB 分块读取 ELF
+        （不整读文件；只用相对路径）。运行时地址 =
+        base + p_vaddr + (magic_file_offset - p_offset)。"""
         try:
             with uio.FileIO(filename, "rb") as f:
                 ehdr = f.read(52)
@@ -154,7 +268,7 @@ class ElfTools:
                         segs.append((struct.unpack_from("<I", ph, 4)[0],
                                      struct.unpack_from("<I", ph, 8)[0],
                                      struct.unpack_from("<I", ph, 16)[0]))
-                # chunked scan with a 7-byte overlap for the 8-byte magic
+                # 以 7 字节重叠分块扫描，适配 8 字节魔数
                 f.seek(0)
                 pos = 0
                 carry = b""
@@ -179,7 +293,7 @@ class ElfTools:
 
     @staticmethod
     def find_primerlog_addr(filename, loaded_base):
-        """locate the PRIMELOG ring inside the loaded image."""
+        """在已加载的映像中定位 PRIMELOG 环。"""
         return ElfTools.find_magic_addr(filename, b"PRIMELOG", loaded_base)
 class ShellcodeElfLoader:
     def __init__(self, dbg):
@@ -205,18 +319,17 @@ class ShellcodeElfLoader:
         return True
 
     def load_elf(self, filename):
-        """upload the shellcode loader, then load the ELF into a malloc'd buffer.
-        Returns (entry_point, log_ring_addr)."""
+        """上传 shellcode 加载器，然后把 ELF 载入 malloc 的缓冲。
+        返回 (entry_point, log_ring_addr)。"""
         mem_size = ElfTools.get_elf_memory_size(filename)
         p_log("[*] ELF requires memory: {} bytes".format(mem_size))
         if mem_size == 0:
             return 0, 0
         self.loaded_elf_size = mem_size
-        # CRITICAL: the firmware malloc only guarantees 4-byte alignment, but
-        # the image contains 8-byte-aligned data (the stack top, long long /
-        # double globals) accessed with LDRD/STRD.  Unaligned double-word
-        # access traps on the ARM926EJ-S, so align the image base to 8
-        # (keep the raw pointer for free()).
+        # 关键：固件 malloc 只保证 4 字节对齐，而映像包含用 LDRD/STRD
+        # 访问的 8 字节对齐数据（栈顶、long long / double 全局变量）。
+        # ARM926EJ-S 上非对齐双字访问会 trap，因此把映像基址对齐到 8
+        # （保留原始指针供 free() 使用）。
         raw = self.dbg.call(ADDR_MALLOC, mem_size + 16)
         if raw == 0:
             p_error("[-] Target malloc failed")
@@ -238,8 +351,8 @@ class ShellcodeElfLoader:
             if self.entry_point == 0 or self.entry_point < 0x30000000:
                 p_error("[-] Loading failed")
                 return 0, 0
-            # MicroPython cannot open C:\... absolute paths; pass the
-            # relative filename (same rule as every other uio.FileIO here)
+            # MicroPython 无法打开 C:\... 绝对路径；传相对文件名
+            # （与本文件里其它 uio.FileIO 同样的规则）
             log_addr = ElfTools.find_primerlog_addr(filename, self.loaded_elf_base)
             p_log("[+] PRIMELOG ring at: 0x{:08X}".format(log_addr))
             return self.entry_point, log_addr
@@ -269,19 +382,19 @@ def str_to_utf16le_bytes(s):
 
 
 # ---------------------------------------------------------------------------
-# PRIMELOG streaming
+# PRIMELOG 流式回显
 # ---------------------------------------------------------------------------
 class LogReader:
-    """streams the C side's PRIMELOG ring (magic "PRIMELOG", int count,
-    char data[RING]) back to the console.  color_fn selects the text color
-    (p_log = gray info, p_out = blue user output); classify turns TCC
-    compiler error/warning lines red/orange."""
+    """把 C 侧的 PRIMELOG 环（魔数 "PRIMELOG"，int count，
+    char data[RING]）流式回显到控制台。color_fn 选择文本颜色
+    （p_log = 灰色信息，p_out = 蓝色用户输出）；classify 把 TCC
+    编译器错误/警告行标为红/橙。"""
     def __init__(self, dbg, log_addr, color_fn=p_log, classify=False):
         self.dbg = dbg
         self.addr = log_addr
         self.local = 0
         self.ring = 32768
-        self.pend = ""     # partial line buffer for colored streaming
+        self.pend = ""     # 彩色流式回显的部分行缓冲
         self.color_fn = color_fn
         self.classify = classify
 
@@ -301,7 +414,7 @@ class LogReader:
                 txt = chunk.decode("utf-8", "ignore")
             except Exception:
                 txt = str(chunk)
-            # stream complete lines, colored; keep partials for later
+            # 流式输出完整行并上色；部分行留待下次
             self.pend += txt
             while "\n" in self.pend:
                 line, self.pend = self.pend.split("\n", 1)
@@ -326,18 +439,17 @@ class LogReader:
 
 
 # ---------------------------------------------------------------------------
-# config (argc/argv) for TCC, same struct the C side expects:
+# TCC 的配置（argc/argv），与 C 侧期望的结构相同：
 #   struct hp_config { unsigned magic; int argc; char **argv;
 #                      unsigned env_count; char **envs; }  magic = 0xD00BC760
 # ---------------------------------------------------------------------------
 CONFIG_MAGIC = 0xD00BC760
-RING = 32768  # must match hp_libc.h's ring size
+RING = 32768  # 必须与 hp_libc.h 的环大小一致
 
-# Isolation switch for on-device debugging: when False, code.elf runs with
-# input state = 0, so hp_input_install() fails and the hook is NEVER
-# installed.  If the calculator's OWN keys still do not work in this mode,
-# the OS input loop is stuck from an earlier broken build and needs a HARD
-# reboot (battery pull / back reset hole) -- no software can unstick it.
+# 机上调隔离开关：为 False 时 code.elf 以 input state = 0 运行，
+# hp_input_install() 失败，钩子永不装配。若在此模式下计算器自身的按键
+# 仍不工作，说明 OS 输入循环被早前一次损坏的构建卡住了，需要硬重启
+# （拔电池 / 复位孔）——没有软件能解开它。
 INPUT_ENABLE = True
 
 class ConfigBuilder:
@@ -372,12 +484,11 @@ class ConfigBuilder:
 
 
 # ---------------------------------------------------------------------------
-# real exit-code reporting: the firmware debug interface reports 2 for the
-# user program's entry no matter what main() returns, so hp_entry logs the
-# real value as "RT_RET:<n>" in the PRIMELOG ring and we parse it here.
+# 真实退出码上报：无论 main() 返回什么，固件调试接口都报告 2；
+# 因此 hp_entry 把真值以 "RT_RET:<n>" 写入 PRIMELOG 环，我们在此解析。
 # ---------------------------------------------------------------------------
 def _parse_rt_ret(text):
-    """extract the real exit code that hp_entry logged as RT_RET:<n>."""
+    """取出 hp_entry 以 RT_RET:<n> 记录的真实退出码。"""
     i = text.rfind("RT_RET:")
     if i < 0:
         return None
@@ -393,17 +504,16 @@ def _parse_rt_ret(text):
 
 
 # ---------------------------------------------------------------------------
-# resident TCC (tcc.slot): keep the ~675KB tcc.elf image + shellcode loader
-# in firmware memory across runs so repeated compile+run cycles stop churning
-# the firmware heap (the README's "crash after 5-9 runs" was exactly that
-# churn: ~900KB malloc/free per run on a small shared heap).
+# 常驻 TCC（tcc.slot）：把 ~675KB 的 tcc.elf 映像 + shellcode 加载器在多次
+# 运行间保留在固件内存中，使反复的“编译+运行”不再抖动固件堆（README 中
+# 的“跑 5-9 次后崩溃”正是这种抖动：每次运行在小的共享堆上
+# malloc/free 约 900KB）。
 #
-# Slot file (20 bytes, <IIIII): loader_addr, base, size, entry_point, log_addr.
-# A reboot or heap reuse invalidates the resident image, so before reusing
-# we verify the shellcode loader's first instruction, the ELF magic at the
-# base, AND that the resident image size matches the tcc.elf on disk
-# (a re-deployed tcc.elf of a different size must never be skipped --
-# e.g. the resident-hook build is 3KB larger than the previous one).
+# 槽文件（20 字节，<IIIII）：loader_addr, base, size, entry_point, log_addr。
+# 重启或堆复用会使常驻映像失效，因此复用前我们校验 shellcode 加载器的
+# 第一条指令、base 处的 ELF 魔数，以及常驻映像大小与磁盘上的 tcc.elf
+# 一致（重新部署后大小不同的 tcc.elf 绝不能被跳过——例如带常驻钩子的
+# 构建比上一个大了 3KB）。
 # ---------------------------------------------------------------------------
 TCC_SLOT = "tcc.slot"
 
@@ -418,27 +528,27 @@ def _tcc_file_size():
 
 
 def _slot_load(dbg, loader):
-    """reuse a resident tcc.elf from a previous run, or return None to
-    load it fresh (and then save the slot)."""
+    """复用上一次运行的常驻 tcc.elf，或返回 None 表示重新加载
+    （随后保存槽）。"""
     try:
         with uio.FileIO(TCC_SLOT, "rb") as f:
             b = f.read(20)
     except Exception:
-        return None                      # no slot yet: first run
+        return None                      # 尚无槽：首次运行
     try:
         if len(b) < 20:
             return None
         la, base, size, entry, log_addr = struct.unpack("<IIIII", b)
         if min(la, base, entry, log_addr) < 0x30000000:
             return None
-        if size != _tcc_file_size():     # tcc.elf on disk changed size
+        if size != _tcc_file_size():     # 磁盘上的 tcc.elf 大小已变
             return None
         if dbg.read_mem(la, 4) != b"\x0b\x00\x00\xea":  # b +0x2c (loader)
             return None
         if dbg.read_mem(base, 4) != b"\x7fELF":          # ELF magic
             return None
         loader.loader_addr = la
-        loader.loaded_elf_raw = 0       # do not free a foreign pointer
+        loader.loaded_elf_raw = 0       # 不要释放外部指针
         loader.loaded_elf_base = base
         loader.loaded_elf_size = size
         loader.entry_point = entry
@@ -461,9 +571,9 @@ def _slot_save(loader, log_addr):
 
 
 def reset_tcc():
-    """drop tcc.slot: the next run re-allocates and reloads tcc.elf.
-    (The old resident image stays in firmware memory until the calculator
-    is reset -- deleting the slot only stops it from being reused.)"""
+    """删除 tcc.slot：下次运行会重新分配并重新加载 tcc.elf。
+    （旧的常驻映像会留在固件内存里直到计算器复位——删槽只是阻止它
+    再被复用。）"""
     try:
         import os as _os
         _os.remove(TCC_SLOT)
@@ -476,70 +586,99 @@ def reset_tcc():
     p_log("[+] tcc.slot removed; next run reloads tcc.elf")
 
 
+# C 运行时把诊断写到应用目录的绝对路径
+# （rt/hp_rt.c 的 diag_log：C:\DATA\primetcc.hpappdir\crash.log）。真机上
+# MicroPython 应用的 CWD 是父目录（C:\DATA），因此纯相对名（"crash.log"）
+# 会静默命中另一个不存在的文件，导致旧日志从未被清理/读取/追加。
+# 两种写法都做；优先绝对路径。
+TRACE_DIR = "C:\\DATA\\primetcc.hpappdir"
+
+
 def _remove_file(name):
-    try:
-        import os as _os
-        _os.remove(name)
-    except Exception:
+    for p in (TRACE_DIR + "\\" + name, name):
         try:
-            uio.remove(name)
+            import os as _os
+            _os.remove(p)
+        except Exception:
+            try:
+                uio.remove(p)
+            except Exception:
+                pass
+
+
+def _append_trace(line):
+    """向 crash.log 持久追加一行标记。C 运行时的 diag_log 会把每一步
+    追加到那里；这些 M 标记记录 MicroPython 侧在程序之后重新获得控制权。
+    先尝试 'ab'；固件若拒绝则退回读+重写。"""
+    for path in (TRACE_DIR + "\\crash.log", "crash.log"):
+        try:
+            with uio.FileIO(path, "ab") as f:
+                f.write(line)
+            return
         except Exception:
             pass
+    try:
+        with uio.FileIO(TRACE_DIR + "\\crash.log", "rb") as f:
+            old = f.read()
+        with uio.FileIO(TRACE_DIR + "\\crash.log", "wb") as f:
+            f.write(old + line)
+    except Exception:
+        pass
 
 
 def _clear_trace_files():
-    """A fully successful run leaves stage.txt / tcc.log / crash.log with
-    stale content; the NEXT run would otherwise display it as a bogus
-    'previous crash trace' even though nothing crashed.  Only cleared on
-    a clean, complete run -- a crash/reboot leaves them for diagnosis."""
+    """一次完全成功的运行会让 stage.txt / tcc.log / crash.log 留下陈旧
+    内容；否则下一次运行会把它当成子虚乌有的“上次崩溃痕迹”展示，哪怕
+    什么都没崩。仅在干净、完整的一次运行后清理——崩溃/重启会把它们
+    留下供诊断。"""
     _remove_file("stage.txt")
     _remove_file("tcc.log")
     _remove_file("crash.log")
 
 
+def _read_any(name):
+    """读取一个 trace 文件，先试运行时写入的应用目录绝对路径
+    （C 运行时写在那里），回退到相对名。"""
+    for p in (TRACE_DIR + "\\" + name, name):
+        try:
+            with uio.FileIO(p, "rb") as f:
+                return f.read()
+        except Exception:
+            pass
+    return b""
+
+
 def _trace_logs_exist():
-    """read the stale trace files from a previous (unfinished) run and show
-    them.  Returns True if any of them has content."""
+    """读取上一次（未完成）运行留下的 trace 文件并展示。
+    任一文件有内容则返回 True。"""
     have = False
-    try:
-        with uio.FileIO("stage.txt", "rb") as f:
-            st = f.read()
-        if st:
-            have = True
-            p_log("--- previous stage marker: %s ---" % decode_bytes(st).strip())
-    except Exception:
-        pass
-    try:
-        with uio.FileIO("tcc.log", "rb") as f:
-            prev = f.read()
-        if prev:
-            have = True
-            p_warning("--- previous tcc.log (crash trace) ---")
-            p_warning(decode_bytes(prev))
-            p_log("--- end previous log ---")
-    except Exception:
-        pass
-    # crash.log: the demo / hp_entry / main.py write the last completed
-    # step here; after a crash+reboot this shows exactly where it died
-    try:
-        with uio.FileIO("crash.log", "rb") as f:
-            cr = f.read()
-        if cr:
-            have = True
-            p_warning("--- last crash.log step: %s ---" %
-                      decode_bytes(cr).strip())
-    except Exception:
-        pass
+    st = _read_any("stage.txt")
+    if st:
+        have = True
+        p_log("--- previous stage marker: %s ---" % decode_bytes(st).strip())
+    prev = _read_any("tcc.log")
+    if prev:
+        have = True
+        p_warning("--- previous tcc.log (crash trace) ---")
+        p_warning(decode_bytes(prev))
+        p_log("--- end previous log ---")
+    # crash.log：C 运行时（diag_log）把每个完成的步骤持久追加到这里
+    # （逐行重写并关闭）；main.py 只追加自己的 M1..M4 标记，因此崩溃+重启
+    # 后能同时看到运行轨迹和崩溃位置。
+    # （这里用 "wb" 会截断运行时留下的轨迹——真机上只见到 "M4 dbg-closed"。）
+    cr = _read_any("crash.log")
+    if cr:
+        have = True
+        p_warning("--- last crash.log step: %s ---" %
+                  decode_bytes(cr).strip())
     return have
 
 
 def _handle_stale_logs():
-    """Crash gate: if a previous run left trace logs, STOP before compiling
-    and let the user read them -- recompiling the same crashing program
-    would crash again and overwrite/refresh the logs, making them
-    unreadable.  The user answers y (delete logs, compile) or anything
-    else (keep logs, do NOT compile).  Returns True to proceed, False to
-    abort the run."""
+    """崩溃闸门：若上一次运行留下了 trace 日志，在编译前停下，让用户
+    先读它们——重新编译同一个会崩溃的程序会再次崩溃并覆盖/刷新日志，
+    使其无法阅读。用户答 y（删除日志并编译）或其它（保留日志，不编译）。
+    返回 True 表示继续，False 表示放弃本次运行。"""
     if not _trace_logs_exist():
         return True
     p_warning("[!] The previous run did not finish cleanly; the program")
@@ -561,7 +700,7 @@ def _handle_stale_logs():
 
 
 # ---------------------------------------------------------------------------
-# the TCC command line used on the calculator
+# 计算器上使用的 TCC 命令行
 # ---------------------------------------------------------------------------
 def tcc_argv():
     return [
@@ -578,10 +717,10 @@ def tcc_argv():
 
 
 def compile_and_run(source_text=None, source_file=None):
-    """compile source (text or file) with TCC on the calculator and run it."""
+    """用计算器上的 TCC 编译源码（文本或文件）并运行。"""
     p_log("--- primetcc: TCC on HP Prime ---")
 
-    # if a previous run crashed, its stage marker + log were persisted
+    # 若上一次运行崩溃，其阶段标记 + 日志会被持久留下
     if not _handle_stale_logs():
         return
 
@@ -589,32 +728,33 @@ def compile_and_run(source_text=None, source_file=None):
     loader = None
     cfg_b = None
     _run_ok = False
+    _prog_ok = False   # 用户程序本身是否完整跑完
     STEP = "init"
     try:
         STEP = "debug interface"
         dbg = PrimeDebug()
 
-        # 1. write the C source to code.c
-        # NOTE: MicroPython file access uses RELATIVE paths (the Python app's
-        # cwd is the app folder).  Only paths handed to the shellcode loader
-        # use the absolute C:\\DATA\\... form (firmware fopen).
+        # 1. 把 C 源码写入 code.c
+        # 注意：MicroPython 的文件访问使用相对路径（Python 应用的 cwd 是
+        # 应用文件夹）。只有递给 shellcode 加载器的路径才用绝对的
+        # C:\\DATA\\... 形式（固件 fopen）。
         if source_text is not None:
             code = source_text
         elif source_file is not None:
             with uio.FileIO(source_file, "rb") as f:
                 code = decode_bytes(f.read())
         else:
-            # read the markers from this file
+            # 从本文件读取标记段
             try:
                 with uio.FileIO("main.py", "rb") as f:
                     txt = decode_bytes(f.read())
             except Exception:
                 txt = ""
-            # NOTE: use rfind, not find!  The marker strings also appear in
-            # this very function's source (the txt.find calls below), so
-            # find() matched those and produced a 31-byte garbage code.c
-            # (verified on hardware: code.c was '")\n...end = txt.find("').
-            # rfind picks the real markers at the end of this file.
+            # 注意：必须用 rfind，不能用 find！标记字符串也出现在这个函数
+            # 自己的源码里（下面的 txt.find 调用），所以 find() 会匹配到
+            # 它们并产生 31 字节的垃圾 code.c
+            # （已硬件验证：code.c 变成 '")\n...end = txt.find("'）。
+            # rfind 会选中本文件末尾的真正标记。
             start = txt.rfind("/* PRIME-C-CODE-BEGIN */")
             end = txt.rfind("/* PRIME-C-CODE-END */")
             if start < 0 or end < 0:
@@ -625,8 +765,8 @@ def compile_and_run(source_text=None, source_file=None):
             f.write(code.encode("utf-8"))
 
         p_log("[*] source written to code.c")
-        # remove any stale code.elf from a previous run so a failed
-        # compile can never run the old program
+        # 删除上一次运行遗留的 code.elf，使失败的编译
+        # 绝不会运行到旧程序
         try:
             import os as _os
             _os.remove("code.elf")
@@ -637,7 +777,7 @@ def compile_and_run(source_text=None, source_file=None):
                 pass
         STEP = "load tcc.elf"
 
-        # 2. load TCC itself -- resident across runs when tcc.slot is valid
+        # 2. 加载 TCC 本体——tcc.slot 有效时跨运行常驻
         loader = ShellcodeElfLoader(dbg)
         slot = _slot_load(dbg, loader)
         if slot is not None:
@@ -651,13 +791,13 @@ def compile_and_run(source_text=None, source_file=None):
                 return
             _slot_save(loader, log_addr)
 
-        # 3. run TCC with the compile command line, streaming its log
+        # 3. 用编译命令行运行 TCC，并流式回显其日志
         STEP = "run TCC"
         cfg_b = ConfigBuilder(dbg)
         cfg_addr = cfg_b.build(tcc_argv())
         p_log("[*] starting TCC...")
-        # entry returns immediately; TCC runs on a firmware thread and
-        # main.py polls the PRIMELOG ring until it sees TCC_DONE:<code>
+        # 入口立即返回；TCC 在固件线程上运行，
+        # main.py 轮询 PRIMELOG 环直到看到 TCC_DONE:<code>
         ret = dbg.call(entry, cfg_addr, 0)
         p_log("[+] entry returned: 0x{:08X}".format(ret))
         reader = LogReader(dbg, log_addr, color_fn=p_log, classify=True)
@@ -702,7 +842,7 @@ def compile_and_run(source_text=None, source_file=None):
         if cfg_b:
             cfg_b.free_all()
 
-        # 4. if the compile failed, STOP here (never run a stale program)
+        # 4. 若编译失败，就停在这里（绝不运行陈旧的程序）
         if exit_code is None:
             p_error("[-] TCC did not finish (timeout); aborting")
             return
@@ -718,6 +858,10 @@ def compile_and_run(source_text=None, source_file=None):
         if not exists:
             p_error("[-] code.elf was not produced; TCC failed")
             return
+        # TCC 对非 static 全局变量的引用会发出 R_ARM_ABS32，shellcode
+        # 加载器无法解析——首次访问就崩溃。把符号值折入，改换
+        # R_ARM_RELATIVE。
+        ElfTools.patch_shared_relocs("code.elf")
 
         STEP = "load code.elf"
         loader2 = ShellcodeElfLoader(dbg)
@@ -727,9 +871,9 @@ def compile_and_run(source_text=None, source_file=None):
         if not entry2:
             p_error("[-] failed to load code.elf")
             return
-        # locate the RESIDENT input-hook state inside tcc.elf ("PRIMEIN");
-        # code.elf's hp_entry receives its address in r0 and hp_input.c
-        # drives the shared queue from it.  Without it, input install fails.
+        # 在 tcc.elf 中定位常驻输入钩子状态（"PRIMEIN"）；
+        # code.elf 的 hp_entry 在 r0 收到其地址，hp_input.c 据此驱动共享
+        # 队列。没有它，输入装配会失败。
         state_addr = ElfTools.find_magic_addr("tcc.elf", b"PRIMEIN",
                                               loader.loaded_elf_base)
         if state_addr == 0:
@@ -745,7 +889,12 @@ def compile_and_run(source_text=None, source_file=None):
               .format(state_addr))
         reader2 = LogReader(dbg, log_addr2, color_fn=p_out, classify=False)
         ret2 = dbg.call(entry2, state_addr, 0)
-        # drain the log ring fully (the ring lives inside code.elf)
+        # M0：Python 重新获得控制权——若重启后 crash.log 中缺少这行，
+        # 说明崩溃发生在 hp_entry 的 'bx lr' 与这里之间（固件侧），
+        # 而不是下面的代码。
+        _prog_ok = True     # dbg.call 已返回：程序完整跑完
+        _append_trace(b"M0 python-regained r0=0x%08X\n" % (ret2 & 0xFFFFFFFF))
+        # 把日志环抽干（环位于 code.elf 内）
         tail = ""
         for _ in range(16):
             chunk = reader2.process()
@@ -759,8 +908,8 @@ def compile_and_run(source_text=None, source_file=None):
             except Exception:
                 print(reader2.pend)
         tail += reader2.pend
-        # the debug interface reports 2 for ANY program; the real exit code
-        # arrives via hp_entry's RT_RET:<n> log line
+        # 调试接口对任意程序都报告 2；真实退出码
+        # 经 hp_entry 的 RT_RET:<n> 日志行传来
         real_ret = _parse_rt_ret(tail)
         if real_ret is not None:
             retline = "\n[+] user program returned: {} (RT_RET; debug interface said 0x{:08X})".format(
@@ -773,14 +922,14 @@ def compile_and_run(source_text=None, source_file=None):
             p_pass(retline)
         else:
             p_error(retline)
-        # The input hook is RESIDENT in tcc.elf, so code.elf is ALWAYS safe
-        # to free -- no leak-keep path, no in-flight-hook race anymore.
+        # 输入钩子常驻在 tcc.elf 中，因此 code.elf 总是可以安全释放——
+        # 不再有泄漏保留路径，也没有钩子在途的竞态。
         try:
             loader2.unload()
             p_log("[+] code.elf freed (resident input hook)")
         except Exception as e:
             p_warning("[!] unload failed: %r" % (e,))
-        _run_ok = True            # full success: clear stale trace files
+        _run_ok = True            # 完全成功：清理陈旧的 trace 文件
 
     except KeyboardInterrupt:
         p_warning("\n[!] Interrupted")
@@ -792,56 +941,52 @@ def compile_and_run(source_text=None, source_file=None):
         except Exception:
             pass
     finally:
-        try:
-            with uio.FileIO("crash.log", "wb") as f:
-                f.write(b"M1 entering-finally\n")
-        except Exception:
-            pass
+        if not _prog_ok:
+            _append_trace(b"M1 entering-finally\n")
         if cfg_b is not None:
             try:
                 cfg_b.free_all()
             except Exception:
                 pass
-        try:
-            with uio.FileIO("crash.log", "wb") as f:
-                f.write(b"M2 cfg-freed\n")
-        except Exception:
-            pass
-        # tcc.elf is deliberately kept RESIDENT (tcc.slot) so repeated runs
-        # don't churn the firmware heap; nothing to unload here.
-        try:
-            with uio.FileIO("crash.log", "wb") as f:
-                f.write(b"M3 tcc-kept-resident\n")
-        except Exception:
-            pass
+        if not _prog_ok:
+            _append_trace(b"M2 cfg-freed\n")
+        # tcc.elf 故意保持常驻（tcc.slot），使反复运行
+        # 不再抖动固件堆；这里无需卸载。
+        if not _prog_ok:
+            _append_trace(b"M3 tcc-kept-resident\n")
         if dbg is not None:
             try:
                 dbg.close()
             except Exception:
                 pass
-        try:
-            with uio.FileIO("crash.log", "wb") as f:
-                f.write(b"M4 dbg-closed\n")
-        except Exception:
-            pass
-        # LAST: on a fully successful run, drop the stale stage/tcc/crash
-        # logs so the NEXT run does not show a bogus "previous crash trace"
-        # (a crash/reboot leaves them for diagnosis).
+        if not _prog_ok:
+            _append_trace(b"M4 dbg-closed\n")
+        # 最后：完全成功的一次运行后，丢弃陈旧的 stage/tcc/crash
+        # 日志，使下一次运行不显示子虚乌有的“上次崩溃痕迹”
+        # （崩溃/重启会把它们留下供诊断）。
         if _run_ok:
             _clear_trace_files()
+        elif _prog_ok:
+            _remove_file("crash.log")   # 程序已结束；没有崩溃需要保留
         p_pass("--- done ---")
 
 
 # ---------------------------------------------------------------------------
-# default program: edit the C source between the markers
+# 默认程序：在标记之间编辑 C 源码
 # ---------------------------------------------------------------------------
 def main():
+    # 清空 PPL 终端，使每次运行都从干净的控制台开始
+    # （无参数的 PPL print() 会抹掉终端输出区）
+    try:
+        hpprime.eval('print()')
+    except Exception:
+        pass
     compile_and_run()
 
 
-# Autorun on `import main` (the calculator Python app has no __main__).
-# PRIMETCC_NO_AUTORUN=1 skips it so host-side tests can import the helpers
-# (the calculator has no os.environ, so the try/except keeps autorun on).
+# `import main` 时自动运行（计算器的 Python 应用没有 __main__）。
+# PRIMETCC_NO_AUTORUN=1 可跳过，供宿主侧测试导入这些辅助函数
+# （计算器没有 os.environ，故用 try/except 保持自动运行开启）。
 _AUTORUN = True
 try:
     import os as _os0
@@ -863,131 +1008,12 @@ if _AUTORUN:
 
 /* PRIME-C-CODE-BEGIN */
 #include "prime.h"
-#include "hp_gfx.h"
-#include "hp_input.h"
-#include "hp_sys.h"
-#include "hp_fonts.h"
 
-/* ---- system-library test panel ----
- * Runs the hp_sys functions (memory / heap / lcd / debug device)
- * and draws the results on the LCD with the custom fonts: Montserrat
- * (proportional) for labels, Cascadia Code (monospace) for values.
- * Every step prints an Sx marker to the console FIRST, so if the device
- * reboots mid-test, the crash gate shows exactly which call died.
- * ENTER (0x0D) re-runs the panel; q (0x51) / ON (0x83) / ESC (0x01) exit. */
-
-#define SYS_KEY_Q   HP_KEY_Q
-#define SYS_KEY_ON  HP_KEY_ON
-#define SYS_KEY_ESC HP_KEY_ESC
-#define SYS_KEY_RUN HP_KEY_ENTER
-
-static int sys_is_exit(int key)
-{
-    return key == SYS_KEY_Q || key == SYS_KEY_ON || key == SYS_KEY_ESC;
-}
-
-/* step marker: print to the console AND persist to crash.log (the console
- * is lost on reboot; crash.log survives).  Reopen with "wb+" every time
- * (the firmware fopen accepts only "rb"/"wb+") and close immediately so
- * the write is flushed -- crash.log then always holds the LAST completed
- * step, which the crash gate displays on the next run. */
-static void sys_mark(const char *s)
-{
-    unsigned fd;
-    unsigned n = 0;
-    printf("%s\n", (unsigned long)s, 0, 0, 0);
-    fd = hp_sys_fopen("crash.log", "wb+");
-    if (fd) {
-        while (s[n]) n++;
-        hp_sys_fwrite((unsigned)(unsigned long)s, 1, n, fd);
-        hp_sys_fclose(fd);
-    }
-}
-
-/* one row: Montserrat 16 label + SCP 16 value, drawn on the LCD AND
- * echoed to the console so memory figures can be watched across runs
- * (heap_free / max_alloc decline ~0.7MB per run -- firmware allocator
- * does not return the compile working set; see README "运行内存") */
-static void sys_row(int y, const char *label, const char *value)
-{
-    hp_font_draw(hp_font_prop(16), 8, y, label, HP_CYAN);
-    hp_font_draw(hp_font_mono(16), 150, y, value, HP_WHITE);
-    printf("%s=%s\n", (unsigned long)label, (unsigned long)value);
-}
-
-static void sys_panel(void)
-{
-    char b[48];
-    void *p;
-    int y = 50;
-
-    hp_clear(HP_BLACK);
-    hp_font_draw(hp_font_prop(24), 8, 6, "primetcc SYS test", HP_YELLOW);
-    hp_font_draw(hp_font_prop(12), 8, 38,
-                 "ENTER=rerun  q/ON/ESC=exit", HP_GRAY);
-
-    sys_mark("S1 malloc");
-    p = hp_sys_malloc(1024);
-    sprintf(b, "%s", (unsigned long)(p ? "ok" : "FAIL"), 0, 0, 0);
-    sys_row(y, "malloc", b); y += 21;
-    if (p) hp_sys_free(p);
-
-    sys_mark("S2 calloc");
-    p = hp_sys_calloc(16, 64);
-    sprintf(b, "%s", (unsigned long)(p ? "ok" : "FAIL"), 0, 0, 0);
-    sys_row(y, "calloc", b); y += 21;
-    if (p) hp_sys_free(p);
-
-    sys_mark("S3 realloc");
-    p = hp_sys_malloc(64);
-    if (p)
-        p = hp_sys_realloc(p, 256);
-    sprintf(b, "%s", (unsigned long)(p ? "ok" : "FAIL"), 0, 0, 0);
-    sys_row(y, "realloc", b); y += 21;
-    if (p) hp_sys_free(p);
-
-    sys_mark("S4 max_alloc");
-    sprintf(b, "%lu", hp_sys_max_alloc(), 0, 0, 0);
-    sys_row(y, "max_alloc", b); y += 21;
-
-    sys_mark("S5 heap_free");
-    sprintf(b, "%lu", hp_sys_heap_free(), 0, 0, 0);
-    sys_row(y, "heap_free", b); y += 21;
-
-    sys_mark("S6 get_lcd");
-    sprintf(b, "%lx", hp_sys_get_lcd(), 0, 0, 0);
-    sys_row(y, "get_lcd", b); y += 21;
-
-    sys_mark("S7 debug_open");
-    sprintf(b, "%lx", (unsigned long)hp_sys_debug_open(), 0, 0, 0);
-    sys_row(y, "debug", b); y += 21;
-
-    sys_mark("SYS_DONE");
-}
+/* 在这里写你的程序，然后运行这个 Python 应用。
+ * （完整演示在宿主的 examples/ 下：gui、ball、mandel、...） */
 
 int main(void) {
-    hp_event ev;
-    int key, t;
-    if (!hp_gfx_init()) { printf("GFX INIT FAIL\n", 0, 0, 0, 0); return 1; }
-    if (!hp_input_install()) { printf("INPUT HOOK FAIL\n", 0, 0, 0, 0); return 1; }
-    for (;;) {
-        sys_panel();
-        for (;;) {
-            __sleep(16);
-            t = hp_poll_event(&ev);
-            if (t != HP_EV_KEY || !hp_event_key_down(&ev))
-                continue;
-            key = hp_event_key(&ev);
-            printf("KEY %02x\n", key, 0, 0, 0);
-            if (sys_is_exit(key)) {
-                hp_input_remove();
-                printf("SYS_EXIT\n", 0, 0, 0, 0);
-                return 0;
-            }
-            if (key == SYS_KEY_RUN)
-                break;                 /* re-run the panel */
-        }
-    }
+    return 0;
 }
 /* PRIME-C-CODE-END */
 

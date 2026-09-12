@@ -1,47 +1,46 @@
 /*
- * hp_image.h -- image loading for TCC-compiled programs on the HP Prime G1.
+ * hp_image.h —— HP Prime G1 上 TCC 编译程序的图像加载。
  *
- * Loads PNG files (or raw PNG bytes) into an ARGB pixel buffer, then
- * draws them with the same primitives as GROBs:
+ * 把 PNG 文件（或原始 PNG 字节）解码为 ARGB 像素缓冲，然后用与 GROB
+ * 相同的图元绘制：
  *
  *     hp_image *img = hp_image_load_png("test.png");
  *     if (img) {
- *         hp_image_draw_scaled(img, 10, 10, 160, 120);  // fit, aspect kept
+ *         hp_image_draw_scaled(img, 10, 10, 160, 120);  // 适配，保持宽高比
  *         hp_image_free(img);
  *     }
  *
- * Supported PNG subset (documented limits):
- *   - 8-bit color types 0 (gray), 2 (RGB), 3 (palette), 4 (gray+alpha),
- *     6 (RGBA);  16-bit and interlaced (Adam7) PNGs are rejected
- *   - tRNS palette alpha and the image's own alpha channel are ignored
- *     (everything draws opaque; use hp_image_draw_key for transparency)
- *   - CRC values are not verified (display-only decoder)
+ * 支持的 PNG 子集（限制已记录）：
+ *   - 8 位色彩类型 0（灰度）、2（RGB）、3（调色板）、4（灰度+alpha）、
+ *     6（RGBA）；16 位与隔行（Adam7）PNG 被拒绝
+ *   - tRNS 调色板 alpha 与图像自身 alpha 通道被忽略（一切按不透明绘制；
+ *     需要透明请用 hp_image_draw_key）
+ *   - 不校验 CRC（仅供显示的解码器）
  *
- * The decoder is a built-in zlib inflate; the whole decode streams
- * row-by-row, so memory peaks at file + w*h*4 + 32KB LZ window.
- * hp_image.c is compiled into rt_core.o (deployed with the runtime).
+ * 解码器内置 zlib inflate；整个解码逐行流式进行，因此内存峰值约为
+ * 文件 + w*h*4 + 32KB LZ 窗口。hp_image.c 编入 rt_core.o（随运行时部署）。
  */
 #ifndef HP_IMAGE_H
 #define HP_IMAGE_H
 
 typedef struct hp_image {
     int w, h;
-    unsigned *px;               /* w*h ARGB pixels (0xFF alpha) */
+    unsigned *px;               /* w*h 个 ARGB 像素（0xFF alpha） */
 } hp_image;
 
-/* decode a PNG file (ASCII path, converted to UTF-16 internally);
- * returns NULL on any error (a short diagnostic is printed) */
+/* 解码 PNG 文件（ASCII 路径，内部转 UTF-16）；
+ * 任何错误返回 NULL（并打印简短诊断） */
 hp_image *hp_image_load_png(const char *ascii_path);
 
-/* decode raw PNG bytes (e.g. an embedded array) */
+/* 解码原始 PNG 字节（例如内嵌数组） */
 hp_image *hp_image_load_png_mem(const unsigned char *data, unsigned len);
 
 void hp_image_free(hp_image *img);
-int  hp_image_w(const hp_image *img);   /* width, 0 if NULL */
-int  hp_image_h(const hp_image *img);   /* height, 0 if NULL */
+int  hp_image_w(const hp_image *img);   /* 宽度，NULL 时为 0 */
+int  hp_image_h(const hp_image *img);   /* 高度，NULL 时为 0 */
 
-/* draw helpers (thin wrappers over hp_blit / hp_blit_scaled; the px
- * array is public, so hp_blit(img->px, ...) works directly too) */
+/* 绘制辅助（hp_blit / hp_blit_scaled 的薄包装；px 数组是公开的，
+ * 因此 hp_blit(img->px, ...) 也可直接用） */
 void hp_image_draw(hp_image *img, int x, int y);
 void hp_image_draw_key(hp_image *img, int x, int y, hp_color key);
 void hp_image_draw_scaled(hp_image *img, int x, int y, int dw, int dh);

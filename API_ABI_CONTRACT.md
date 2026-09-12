@@ -5,31 +5,29 @@
 本文件定义**同一份用户 C 代码**在两种环境下必须遵守的统一约定：
 
 - **目标环境（ARM）**：HP Prime G1 上的 TCC（或交叉 gcc）编译、运行；
-- **主机环境（PC）**：宿主 gcc 编译（按本轮约定**只编译、不链接运行**，见 §6）。
+- **主机环境（PC）**：宿主 gcc 编译（按约定**只编译、不链接运行**，见 §6）。
 
 ## 1. 权威契约来源
 
-用户侧 API 的唯一权威定义（本仓库）：
+用户侧 API 的唯一权威定义在
+
+[C 核心库：`toolchain/sdk/`](../toolchain/sdk/)：
 
 | 文件 | 内容 |
 |---|---|
 | [`../toolchain/sdk/prime.h`](../toolchain/sdk/prime.h) | 基础运行时：输出、内存、字符串、`qsort/bsearch` |
-| [`rt/hp_gfx.h`](rt/hp_gfx.h) | 绘图（framebuffer、图元、文本、GROB） |
-| [`rt/hp_input.h`](rt/hp_input.h) | 键盘/触摸事件与输入钩子 |
-| [`rt/hp_math.h`](rt/hp_math.h) | openlibm 数学函数 |
-| [`rt/hp_string.h`](rt/hp_string.h) | 字符串/转换 |
-| [`rt/hp_fonts.h`](rt/hp_fonts.h) | 字体与字形 |
-| [`rt/hp_gui.h`](rt/hp_gui.h) | 控件与帧缓冲 GUI |
-| [`rt/hp_fixmath.h`](rt/hp_fixmath.h) | Q16.16 定点数学 |
-| [`rt/hp_random.h`](rt/hp_random.h) | PCG32 随机数与噪声 |
-| [`rt/hp_codec.h`](rt/hp_codec.h) | CRC32/Adler32、hex/base64 |
-| [`rt/hp_sys.h`](rt/hp_sys.h) | 固件 SVC 封装（内存/文件/LCD/事件） |
-| [`rt/hp_icall.h`](rt/hp_icall.h) | `hp_icall2`：GCC 运行时安全回调 TCC 函数（见 §2） |
-| [`rt/hp_image.h`](rt/hp_image.h) | PNG 图像加载/绘制（`hp_image_load_png` 等） |
-
-> 这些头文件此前分散在 `primetcc.hpappdir/`（部署目录）中；现已归位到
-> `hp/`（用户程序头）与 `rt/`（运行时头），与 `Makefile` 的
-> `CFLAGS -I$(TOPDIR)/hp -I$(TOPDIR)/rt` 一致。
+| [`../toolchain/sdk/hp_gfx.h`](../toolchain/sdk/hp_gfx.h) | 绘图（framebuffer、图元、文本、GROB） |
+| [`../toolchain/sdk/hp_input.h`](../toolchain/sdk/hp_input.h) | 键盘/触摸事件与输入钩子 |
+| [`../toolchain/sdk/hp_math.h`](../toolchain/sdk/hp_math.h) | openlibm 数学函数 |
+| [`../toolchain/sdk/hp_string.h`](../toolchain/sdk/hp_string.h) | 字符串/转换 |
+| [`../toolchain/sdk/hp_fonts.h`](../toolchain/sdk/hp_fonts.h) | 字体与字形 |
+| [`../toolchain/sdk/hp_gui.h`](../toolchain/sdk/hp_gui.h) | 控件与帧缓冲 GUI |
+| [`../toolchain/sdk/hp_fixmath.h`](../toolchain/sdk/hp_fixmath.h) | Q16.16 定点数学 |
+| [`../toolchain/sdk/hp_random.h`](../toolchain/sdk/hp_random.h) | PCG32 随机数与噪声 |
+| [`../toolchain/sdk/hp_codec.h`](../toolchain/sdk/hp_codec.h) | CRC32/Adler32、hex/base64 |
+| [`../toolchain/sdk/hp_sys.h`](../toolchain/sdk/hp_sys.h) | 固件 SVC 封装（内存/文件/LCD/事件） |
+| [`../toolchain/sdk/hp_icall.h`](../toolchain/sdk/hp_icall.h) | `hp_icall2`：GCC 运行时安全回调 TCC 函数（见 §2） |
+| [`../toolchain/sdk/hp_image.h`](../toolchain/sdk/hp_image.h) | PNG 图像加载/绘制（`hp_image_load_png` 等） |
 
 ## 2. 目标环境（TCC-ARM）的硬约束
 
@@ -43,7 +41,7 @@
 | **ILP32、软浮点** | `int`/`long`/指针 4 字节；`-mfloat-abi=soft`，无 FPU |
 | **`malloc` 8 字节对齐** | libgcc 的 `__aeabi_*` 会用 `LDRD/STRD`，ARM926EJ-S 非对齐访问会 fault |
 | **禁用尾调用优化** | 运行时需以 `-fno-optimize-sibling-calls` 编译 |
-| **TCC 代码不保留 r4–r11** | TCC 生成的代码违反 AAPCS，不会恢复 callee-saved 寄存器。GCC 运行时回调 TCC 函数（GUI `on_click`、`qsort` 比较器等）时，调用者的寄存器会被破坏——**必须经 `hp_icall2`** 包裹（`rt/hp_icall.h`：在 `blx` 前后保存/恢复 r4–r11/ip/lr） |
+| **TCC 代码不保留 r4–r11** | TCC 生成的代码违反 AAPCS，不会恢复 callee-saved 寄存器。GCC 运行时回调 TCC 函数（GUI `on_click`、`qsort` 比较器等）时，调用者的寄存器会被破坏——**必须经 `hp_icall2`** 包裹（`hp_icall.h`：在 `blx` 前后保存/恢复 r4–r11/ip/lr） |
 
 ## 3. 主机环境（PC gcc）的差异
 
@@ -54,15 +52,11 @@
 | 浮点 | 软浮点 | 硬件 FPU |
 | libc | 无（`freestanding`） | 有（`<stdlib.h>`/`<string.h>` 已声明同名函数） |
 
-## 4. 统一手段（本轮实际改动）
+## 4. 统一手段
 
 ### 4.1 `size_t` 跟随宿主编译器
 
-原实现把 `size_t` 硬编码为 `unsigned int`（3 处：`toolchain/sdk/prime.h`、`rt/hp_string.h`、
-`rt/hp_sys.h`）。在 PC 上会与内建的 `size_t`（64 位）冲突，产生
-`-Wbuiltin-declaration-mismatch` 警告。
-
-现统一为：
+`size_t` 统一由宿主编译器决定，三个头共用同一 guard：
 
 ```c
 #ifndef PRIME_SIZE_T_DEFINED
@@ -76,11 +70,14 @@ typedef unsigned int size_t;
 #endif
 ```
 
-- 三个头共用同一 guard 宏（`PRIME_SIZE_T_DEFINED`），任一头先被包含都不会重复定义；
+- 三个头（`prime.h`、`hp_string.h`、`hp_sys.h`）共用同一 guard 宏
+  （`PRIME_SIZE_T_DEFINED`），任一头先被包含都不会重复定义；
 - 同时保留旧宏 `SIZE_T_DEFINED` 以兼容既有代码；
-- **ARM 侧结果不变**：`__SIZE_TYPE__` 在 ARM 32 位目标上就是 `unsigned int`。
+- **ARM 侧**：`__SIZE_TYPE__` 在 ARM 32 位目标上就是 `unsigned int`；
+- **PC 侧**：`size_t` 与内建类型一致（64 位），不产生
+  `-Wbuiltin-declaration-mismatch`。
 
-> 这是为"统一 API/ABI"所做的**平台适配**，不是修 bug；`#define NULL ((void *)0)`
+> 这是为"统一 API/ABI"所做的**平台适配**；`#define NULL ((void *)0)`
 > 保持不变（重复定义相同替换属于合法情形）。
 
 ### 4.2 用户代码应遵守的规则
@@ -102,28 +99,25 @@ typedef unsigned int size_t;
 
 ```bash
 # 主机
-gcc -c -I hp -I rt probe.c -o probe_pc.o          # → 0 警告
+gcc -c -I toolchain/sdk probe.c -o probe_pc.o            # → 0 警告
 
 # 目标
 arm-none-eabi-gcc -c -mcpu=arm926ej-s -marm -mfloat-abi=soft -ffreestanding \
-    -I hp -I rt probe.c -o probe_arm.o            # → 通过
+    -I toolchain/sdk probe.c -o probe_arm.o              # → 通过
 ```
 
 | 验证项 | 结果 |
 |---|---|
-| PC gcc 编译 | **通过，0 警告**（改动前有 8+ 条 `-Wbuiltin-declaration-mismatch`） |
+| PC gcc 编译 | **通过，0 警告** |
 | ARM gcc 编译 | 通过 |
-| ARM 侧改动前后目标文件 | **字节完全一致**（`cmp` 无输出）——证明改动对目标环境零影响 |
-| `app-collection/staging/prime-code` 示例 | `prime.h` 同步后重建，产物（剥符号表）与上游提交版**字节一致**（24644 字节） |
+| 可复现的接口示例 | [../toolchain/examples/api-probe/](../toolchain/examples/api-probe/)（`make check`） |
 
-可复现的接口示例见 [../toolchain/examples/api-probe/](../toolchain/examples/api-probe/)。
-
-## 6. 本轮未覆盖（按约定）
+## 6. 未覆盖
 
 - **PC 端没有 `hp_*` 实现**：不新写 host shim，因此主机侧**只能编译、不能链接
   运行**；`gcc probe.c` 会在链接阶段报未定义符号，属预期；
 - **ARM 侧实现大量缺失**：`hp_fonts.c`/`hp_sys.c`/`hp_gui.c`/`hp_fixmath.c`/
   `hp_random.c`/`hp_codec.c`/`hp_icall.c`/`hp_entry` 等不存在，
   `rt_core.o` 无法重建，详见 [STATUS.md](STATUS.md)；
-- **TCC 编译器本身未改动**（无源码，也不属于本轮范围）；
+- **TCC 编译器本身未改动**（无源码）；
 - 头文件与实现的历史不一致点**只标记、不修改**，见 [STATUS.md](STATUS.md)。

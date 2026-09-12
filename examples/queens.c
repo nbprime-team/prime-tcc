@@ -1,9 +1,8 @@
 /*
- * queens.c -- eight queens demo for primetcc (console edition)
+ * queens.c —— primetcc 的八皇后演示（控制台版）
  *
- * Solves the classic 8-queens puzzle by backtracking and prints ALL 92
- * solutions to the console, one per line, as the columns of rows 1..8
- * written as the letters a..h:
+ * 用回溯法求解经典的八皇后问题，并把全部 92 个解打印到控制台，每行
+ * 一个，写法是第 1..8 行的列用字母 a..h 表示：
  *
  *   Q01 a e h f c g b d
  *   Q02 a f h c g d b e
@@ -12,14 +11,13 @@
  *   QUEENS total=92
  *   QUEENS_DONE
  *
- * Runs, prints and exits on its own -- no keys needed (the console output
- * is kept in the PRIMELOG ring, so it survives until main.py drains it).
- * Deterministic output doubles as the regression expectation.
+ * 自行运行、打印并退出——无需按键（控制台输出保存在 PRIMELOG 环形
+ * 缓冲中，直到 main.py 抽干它）。确定性的输出同时充当回归预期。
  */
 #include "prime.h"
 
-static int col[8];            /* col[r] = column of the queen in row r */
-static int sols[92][8];       /* all solutions (rows 0..7 -> columns 0..7) */
+static int col[8];            /* col[r] = 第 r 行皇后的列 */
+static int sols[92][8];       /* 全部解（行 0..7 -> 列 0..7） */
 static int n_sols;
 
 static int ok(int r, int c)
@@ -28,7 +26,7 @@ static int ok(int r, int c)
     for (i = 0; i < r; i++) {
         d = col[i] - c;
         if (d == 0 || d == r - i || d == i - r)
-            return 0;         /* same column or same diagonal */
+            return 0;         /* 同列或同对角线 */
     }
     return 1;
 }
@@ -36,7 +34,7 @@ static int ok(int r, int c)
 static void solve(int r)
 {
     int c, i;
-    if (r == 8) {                         /* all 8 rows placed */
+    if (r == 8) {                         /* 8 行已全部放置 */
         if (n_sols < 92)
             for (i = 0; i < 8; i++)
                 sols[n_sols][i] = col[i];
@@ -62,7 +60,7 @@ static void print_sol(int n)
     *p++ = (char)('0' + n % 10);
     *p++ = ' ';
     for (i = 0; i < 8; i++) {
-        *p++ = (char)('a' + s[i]);        /* column 0 -> 'a' ... 7 -> 'h' */
+        *p++ = (char)('a' + s[i]);        /* 列 0 -> 'a' ... 7 -> 'h' */
         if (i < 7)
             *p++ = ' ';
     }
