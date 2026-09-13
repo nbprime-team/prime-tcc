@@ -94,7 +94,7 @@ make all                             # 需先补齐 STATUS.md §2 的源码
 ## 固件接口
 
 > ⚠️ **本小节不完整**：关于"每轮编译+运行后自由内存减少约 0.71MB"的成因与规避
-> **尚无记录**。补全需 `toolchain/sdk/hp_rt.c` 的分配器与 `calc/main.py` 的
+> **尚无记录**。补全需 `toolchain/sdk/src/hp_rt.c` 的分配器与 `calc/main.py` 的
 > 释放流程。在补齐前**不臆造机制**。
 
 ## 相关文档

@@ -15,19 +15,19 @@
 
 | 文件 | 内容 |
 |---|---|
-| [`../toolchain/sdk/prime.h`](../toolchain/sdk/prime.h) | 基础运行时：输出、内存、字符串、`qsort/bsearch` |
-| [`../toolchain/sdk/hp_gfx.h`](../toolchain/sdk/hp_gfx.h) | 绘图（framebuffer、图元、文本、GROB） |
-| [`../toolchain/sdk/hp_input.h`](../toolchain/sdk/hp_input.h) | 键盘/触摸事件与输入钩子 |
-| [`../toolchain/sdk/hp_math.h`](../toolchain/sdk/hp_math.h) | openlibm 数学函数 |
-| [`../toolchain/sdk/hp_string.h`](../toolchain/sdk/hp_string.h) | 字符串/转换 |
-| [`../toolchain/sdk/hp_fonts.h`](../toolchain/sdk/hp_fonts.h) | 字体与字形 |
-| [`../toolchain/sdk/hp_gui.h`](../toolchain/sdk/hp_gui.h) | 控件与帧缓冲 GUI |
-| [`../toolchain/sdk/hp_fixmath.h`](../toolchain/sdk/hp_fixmath.h) | Q16.16 定点数学 |
-| [`../toolchain/sdk/hp_random.h`](../toolchain/sdk/hp_random.h) | PCG32 随机数与噪声 |
-| [`../toolchain/sdk/hp_codec.h`](../toolchain/sdk/hp_codec.h) | CRC32/Adler32、hex/base64 |
-| [`../toolchain/sdk/hp_sys.h`](../toolchain/sdk/hp_sys.h) | 固件 SVC 封装（内存/文件/LCD/事件） |
-| [`../toolchain/sdk/hp_icall.h`](../toolchain/sdk/hp_icall.h) | `hp_icall2`：GCC 运行时安全回调 TCC 函数（见 §2） |
-| [`../toolchain/sdk/hp_image.h`](../toolchain/sdk/hp_image.h) | PNG 图像加载/绘制（`hp_image_load_png` 等） |
+| [`../toolchain/sdk/include/prime.h`](../toolchain/sdk/include/prime.h) | 基础运行时：输出、内存、字符串、`qsort/bsearch` |
+| [`../toolchain/sdk/include/hp_gfx.h`](../toolchain/sdk/include/hp_gfx.h) | 绘图（framebuffer、图元、文本、GROB） |
+| [`../toolchain/sdk/include/hp_input.h`](../toolchain/sdk/include/hp_input.h) | 键盘/触摸事件与输入钩子 |
+| [`../toolchain/sdk/include/hp_math.h`](../toolchain/sdk/include/hp_math.h) | openlibm 数学函数 |
+| [`../toolchain/sdk/include/hp_string.h`](../toolchain/sdk/include/hp_string.h) | 字符串/转换 |
+| [`../toolchain/sdk/include/hp_fonts.h`](../toolchain/sdk/include/hp_fonts.h) | 字体与字形 |
+| [`../toolchain/sdk/include/hp_gui.h`](../toolchain/sdk/include/hp_gui.h) | 控件与帧缓冲 GUI |
+| [`../toolchain/sdk/include/hp_fixmath.h`](../toolchain/sdk/include/hp_fixmath.h) | Q16.16 定点数学 |
+| [`../toolchain/sdk/include/hp_random.h`](../toolchain/sdk/include/hp_random.h) | PCG32 随机数与噪声 |
+| [`../toolchain/sdk/include/hp_codec.h`](../toolchain/sdk/include/hp_codec.h) | CRC32/Adler32、hex/base64 |
+| [`../toolchain/sdk/include/hp_sys.h`](../toolchain/sdk/include/hp_sys.h) | 固件 SVC 封装（内存/文件/LCD/事件） |
+| [`../toolchain/sdk/include/hp_icall.h`](../toolchain/sdk/include/hp_icall.h) | `hp_icall2`：GCC 运行时安全回调 TCC 函数（见 §2） |
+| [`../toolchain/sdk/include/hp_image.h`](../toolchain/sdk/include/hp_image.h) | PNG 图像加载/绘制（`hp_image_load_png` 等） |
 
 ## 2. 目标环境（TCC-ARM）的硬约束
 
@@ -99,11 +99,11 @@ typedef unsigned int size_t;
 
 ```bash
 # 主机
-gcc -c -I toolchain/sdk probe.c -o probe_pc.o            # → 0 警告
+gcc -c -I toolchain/sdk/include probe.c -o probe_pc.o            # → 0 警告
 
 # 目标
 arm-none-eabi-gcc -c -mcpu=arm926ej-s -marm -mfloat-abi=soft -ffreestanding \
-    -I toolchain/sdk probe.c -o probe_arm.o              # → 通过
+    -I toolchain/sdk/include probe.c -o probe_arm.o              # → 通过
 ```
 
 | 验证项 | 结果 |

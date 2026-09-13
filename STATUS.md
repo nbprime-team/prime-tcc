@@ -42,10 +42,10 @@
 | `hp/hp_vsnprintf.c` | `HP_OBJS` | `tcc.elf` 含 `hp_vsnprintf.c` |
 | `hp/hp_svc.s` | `HP_OBJS` | `tcc.elf` 含 `hp_svc.o` |
 | `hp/include/`（TCC 编译用桩头文件） | `CFLAGS -I$(TOPDIR)/hp/include` | — |
-| `toolchain/sdk/hp_fonts.c`、`hp_fonts_data.c`、`hp_sys.c`、`hp_fixmath.c`、`hp_random.c`、`hp_codec.c`、`hp_gui.c`、`hp_icall.c`、`hp_image.c` | `RT_CORE_SRCS`（对应头均已就位） | 均出现在 `rt_core.o` 的 `STT_FILE` |
-| `toolchain/sdk/hp_input_svc.c`、`hp_input_svc.h` | 编入 `tcc.elf` | `tcc.elf` 含 `hp_input_svc.c` |
-| `toolchain/sdk/rt_svc.s`、`rt_softfloat.c` | `rt_svc.o` / `rt_aeabi.o` | `rt_aeabi.o` 已 strip |
-| `toolchain/sdk/openlibm/`（整目录，27 个 `.c`） | `OLM_SRCS` → `rt_math.o` | `rt_math.o` 的 `STT_FILE` |
+| `toolchain/sdk/src/hp_fonts.c`、`hp_fonts_data.c`、`hp_sys.c`、`hp_fixmath.c`、`hp_random.c`、`hp_codec.c`、`hp_gui.c`、`hp_icall.c`、`hp_image.c` | `RT_CORE_SRCS`（对应头均已就位） | 均出现在 `rt_core.o` 的 `STT_FILE` |
+| `toolchain/sdk/src/hp_input_svc.c`、`hp_input_svc.h` | 编入 `tcc.elf` | `tcc.elf` 含 `hp_input_svc.c` |
+| `toolchain/sdk/platform/rt_svc.s`、`rt_softfloat.c` | `rt_svc.o` / `rt_aeabi.o` | `rt_aeabi.o` 已 strip |
+| `toolchain/sdk/src/openlibm/`（整目录，27 个 `.c`） | `OLM_SRCS` → `rt_math.o` | `rt_math.o` 的 `STT_FILE` |
 | `tests/harness.py`、`tests/emu_arm2.py`、`tests/restart_check.py` | `make test` | — |
 
 **核对方法**：拿到某个 `.c` 后，用
@@ -61,14 +61,14 @@
 
 | # | 位置 | 现象 |
 |---|---|---|
-| A1 | `toolchain/sdk/prime.h` 声明 `hp_printf8`；`toolchain/sdk/hp_rt.c:195` 只定义 4 参 `printf` | 变参宏派发目标无实现 → `grep -rn hp_printf8 toolchain/sdk/*.c` 无输出 |
-| A2 | `toolchain/sdk/hp_gfx.h` 声明 `hp_pixel_a`/`hp_triangle`/`hp_fill_triangle`/`hp_grob_w`/`hp_grob_h`/`hp_target_w`/`hp_target_h`/`hp_blit*` | `hp_gfx.c` 实现数为 0 |
-| A3 | `toolchain/sdk/hp_string.h` 声明 `ftoa`/`dtoa`/`strtod`/`atof` | `hp_string.c` 实现数为 0 |
+| A1 | `toolchain/sdk/include/prime.h` 声明 `hp_printf8`；`toolchain/sdk/src/hp_rt.c:195` 只定义 4 参 `printf` | 变参宏派发目标无实现 → `grep -rn hp_printf8 toolchain/sdk/*.c` 无输出 |
+| A2 | `toolchain/sdk/include/hp_gfx.h` 声明 `hp_pixel_a`/`hp_triangle`/`hp_fill_triangle`/`hp_grob_w`/`hp_grob_h`/`hp_target_w`/`hp_target_h`/`hp_blit*` | `hp_gfx.c` 实现数为 0 |
+| A3 | `toolchain/sdk/include/hp_string.h` 声明 `ftoa`/`dtoa`/`strtod`/`atof` | `hp_string.c` 实现数为 0 |
 | A4 | `Makefile` 用 `-Wl,-e,hp_entry` | `hp_entry`、`g_hp_input` 全仓零出现 |
-| B1 | `malloc` 对齐 | `API.md` 说 4 字节；`toolchain/sdk/hp_rt.c:257` 是 `(raw+15)&~7`（8 字节） |
-| B2 | `ftoa` 的 `dec` | `toolchain/sdk/hp_string.h:68` 说 clamp 0..15；`API.md:169` 说 `dec<0` 为自动模式 |
-| B3 | 等宽字体名 | `toolchain/sdk/hp_fonts.h:6` 说 Cascadia Code；同文件 `:44` 与 `API.md:83` 说 Unifont |
-| C1 | `NULL` 在 `toolchain/sdk/prime.h`、`toolchain/sdk/hp_string.h`、`toolchain/sdk/hp_gui.h` 三处重复定义 | 替换文本相同，合法；仅登记 |
+| B1 | `malloc` 对齐 | `API.md` 说 4 字节；`toolchain/sdk/src/hp_rt.c:257` 是 `(raw+15)&~7`（8 字节） |
+| B2 | `ftoa` 的 `dec` | `toolchain/sdk/include/hp_string.h:68` 说 clamp 0..15；`API.md:169` 说 `dec<0` 为自动模式 |
+| B3 | 等宽字体名 | `toolchain/sdk/include/hp_fonts.h:6` 说 Cascadia Code；同文件 `:44` 与 `API.md:83` 说 Unifont |
+| C1 | `NULL` 在 `toolchain/sdk/include/prime.h`、`toolchain/sdk/include/hp_string.h`、`toolchain/sdk/include/hp_gui.h` 三处重复定义 | 替换文本相同，合法；仅登记 |
 | D1 | 示例 `printf` 实参个数不一（`hello.c` 0–1 个、`queens.c` 满 8 个） | 宏派发可接受；仅登记 |
 
 > `prime-tcc/README.md` 的「固件接口」小节内容缺失（原文中断），**未臆造**，

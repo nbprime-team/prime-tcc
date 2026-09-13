@@ -51,7 +51,7 @@ else
 SYSINC  := -isystem /usr/lib/arm-none-eabi/include
 endif
 CFLAGS  := $(ARCH) -ffreestanding -fPIC -O0 -g -Wall \
-           -I$(TOPDIR)/hp/include -I$(TOPDIR)/hp -I$(SDK)/sdk -I$(TCCSRC) \
+           -I$(TOPDIR)/hp/include -I$(TOPDIR)/hp -I$(SDK)/sdk/include -I$(TCCSRC) \
            -DTCC_TARGET_ARM -DCONFIG_TCC_STATIC -DTCC_ARM_EABI -DTCC_ARM_SOFT_FLOAT -DHP_PRIME $(SYSINC)
 ASFLAGS := -mcpu=arm926ej-s
 
@@ -106,9 +106,9 @@ $(OUTDIR)/obj/hp_vsnprintf.o: hp/hp_vsnprintf.c hp/hp_libc.h | $(OUTDIR)/obj
 	$(ARMCC) $(CFLAGS) -c hp/hp_vsnprintf.c -o $@
 
 # RESIDENT input-hook service: compiled INTO $(OUTDIR)/tcc.elf so the firmware
-# get_event slot always points at never-freed code (see $(SDK)/sdk/hp_input_svc.c)
-$(OUTDIR)/obj/hp_input_svc.o: $(SDK)/sdk/hp_input_svc.c $(SDK)/sdk/hp_input_svc.h hp/hp_libc.h | $(OUTDIR)/obj
-	$(ARMCC) $(CFLAGS) -c $(SDK)/sdk/hp_input_svc.c -o $@
+# get_event slot always points at never-freed code (see $(SDK)/sdk/src/hp_input_svc.c)
+$(OUTDIR)/obj/hp_input_svc.o: $(SDK)/sdk/src/hp_input_svc.c $(SDK)/sdk/include/hp_input_svc.h hp/hp_libc.h | $(OUTDIR)/obj
+	$(ARMCC) $(CFLAGS) -c $(SDK)/sdk/src/hp_input_svc.c -o $@
 
 # TCC's configure generates config.h for the ARM target (one-time).
 $(TCCSRC)/config.h: $(TCCSRC)/configure
@@ -120,16 +120,16 @@ $(TCCSRC)/config.h: $(TCCSRC)/configure
 # hp_math + hp_string) prebuilt with GCC.  TCC on the calculator then only
 # compiles the user's code.c (was ~39 KB of runtime sources per compile)
 # and links the rest -- on-calc compile time drops by roughly 4x.
-RT_CORE_SRCS := $(SDK)/sdk/hp_rt.c $(SDK)/sdk/hp_gfx.c $(SDK)/sdk/hp_input.c \
-	$(SDK)/sdk/hp_math.c $(SDK)/sdk/hp_string.c \
-	$(SDK)/sdk/hp_fonts.c $(SDK)/sdk/hp_fonts_data.c $(SDK)/sdk/hp_sys.c \
-	$(SDK)/sdk/hp_fixmath.c $(SDK)/sdk/hp_random.c $(SDK)/sdk/hp_codec.c \
-	$(SDK)/sdk/hp_gui.c $(SDK)/sdk/hp_icall.c
-RT_CORE_HDRS := $(SDK)/sdk/hp_gfx.h $(SDK)/sdk/hp_input.h $(SDK)/sdk/hp_math.h \
-	$(SDK)/sdk/hp_string.h $(SDK)/sdk/hp_fixmath.h $(SDK)/sdk/hp_random.h \
-	$(SDK)/sdk/hp_codec.h $(SDK)/sdk/hp_gui.h $(SDK)/sdk/hp_icall.h
+RT_CORE_SRCS := $(SDK)/sdk/src/hp_rt.c $(SDK)/sdk/src/hp_gfx.c $(SDK)/sdk/src/hp_input.c \
+	$(SDK)/sdk/src/hp_math.c $(SDK)/sdk/src/hp_string.c \
+	$(SDK)/sdk/src/hp_fonts.c $(SDK)/sdk/src/hp_fonts_data.c $(SDK)/sdk/src/hp_sys.c \
+	$(SDK)/sdk/src/hp_fixmath.c $(SDK)/sdk/src/hp_random.c $(SDK)/sdk/src/hp_codec.c \
+	$(SDK)/sdk/src/hp_gui.c $(SDK)/sdk/src/hp_icall.c
+RT_CORE_HDRS := $(SDK)/sdk/include/hp_gfx.h $(SDK)/sdk/include/hp_input.h $(SDK)/sdk/include/hp_math.h \
+	$(SDK)/sdk/include/hp_string.h $(SDK)/sdk/include/hp_fixmath.h $(SDK)/sdk/include/hp_random.h \
+	$(SDK)/sdk/include/hp_codec.h $(SDK)/sdk/include/hp_gui.h $(SDK)/sdk/include/hp_icall.h
 RT_CORE_FLAGS := -O2 -ffreestanding -fPIC -mcpu=arm926ej-s -marm -mfloat-abi=soft \
-	-I$(SDK)/sdk -Wall -fno-optimize-sibling-calls
+	-I$(SDK)/sdk/include -Wall -fno-optimize-sibling-calls
 $(OUTDIR)/rt_core.o: $(RT_CORE_SRCS) $(RT_CORE_HDRS) | $(OUTDIR)/rt_svc.o
 	@rm -rf $(OUTDIR)/obj/corex && mkdir -p $(OUTDIR)/obj/corex
 	@set -e; for f in $(RT_CORE_SRCS); do \
@@ -140,7 +140,7 @@ $(OUTDIR)/rt_core.o: $(RT_CORE_SRCS) $(RT_CORE_HDRS) | $(OUTDIR)/rt_svc.o
 
 # $(OUTDIR)/rt_math.o: openlibm (BSD) prebuilt with -O2; the transcendental + simple
 # functions are renamed to hp_* via -D so they plug into hp_math.h.
-OLM := $(SDK)/sdk/openlibm
+OLM := $(SDK)/sdk/src/openlibm
 OLM_FLAGS := -O2 -ffreestanding -fPIC -mcpu=arm926ej-s -marm -mfloat-abi=soft -I$(OLM)
 OLM_RENAMES := -Dsin=hp_sin -Dcos=hp_cos -Dtan=hp_tan -Datan=hp_atan \
 	-Datan2=hp_atan2 -Dasin=hp_asin -Dacos=hp_acos -Dexp=hp_exp \
@@ -160,15 +160,15 @@ $(OUTDIR)/rt_math.o: $(addprefix $(OLM)/,$(OLM_SRCS)) $(OLM)/cdefs-compat.h
 	@mv $(OLM)/*.o $(OUTDIR)/obj/olmx/
 	@$(ARMLD) -r $(OUTDIR)/obj/olmx/*.o -o $(OUTDIR)/rt_math.o
 	@echo "==> $(OUTDIR)/rt_math.o built"
-	@$(ARMCC) -c $(SDK)/sdk/rt_softfloat.c -o $(OUTDIR)/obj/olmx/rt_softfloat.o 2>/dev/null || true
+	@$(ARMCC) -c $(SDK)/sdk/src/rt_softfloat.c -o $(OUTDIR)/obj/olmx/rt_softfloat.o 2>/dev/null || true
 
-$(OUTDIR)/rt_svc.o: $(SDK)/sdk/rt_svc.s
-	$(ARMAS) $(ASFLAGS) $(SDK)/sdk/rt_svc.s -o $@
+$(OUTDIR)/rt_svc.o: $(SDK)/sdk/platform/rt_svc.s
+	$(ARMAS) $(ASFLAGS) $(SDK)/sdk/platform/rt_svc.s -o $@
 
 # __aeabi_* helpers extracted from libgcc (division, 64-bit ops)
 $(OUTDIR)/rt_aeabi.o: | $(OUTDIR)/rt_svc.o
 	@rm -rf $(OUTDIR)/obj/libgccx && mkdir -p $(OUTDIR)/obj/libgccx
-	@$(ARMCC) $(CFLAGS) -c $(SDK)/sdk/rt_softfloat.c -o $(OUTDIR)/obj/libgccx/rt_softfloat.o
+	@$(ARMCC) $(CFLAGS) -c $(SDK)/sdk/src/rt_softfloat.c -o $(OUTDIR)/obj/libgccx/rt_softfloat.o
 	@cd $(OUTDIR)/obj/libgccx && $(ARMAR) x $$($(ARMCC) -print-libgcc-file-name) \
 	    _divsi3.o _udivsi3.o _modsi3.o _umodsi3.o _dvmd_tls.o \
 	    _clzsi2.o _clzdi2.o _ctzsi2.o _ctzdi2.o \
@@ -217,10 +217,10 @@ deploy:
 	    primetcc.hpappdir/code.elf primetcc.hpappdir/probe5.bin \
 	    primetcc.hpappdir/stage.txt
 	@cp $(OUTDIR)/tcc.elf $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o $(OUTDIR)/rt_math.o \
-	    calc/main.py $(SDK)/sdk/prime.h $(SDK)/sdk/stdbool.h \
-	    $(SDK)/sdk/hp_gfx.h $(SDK)/sdk/hp_input.h $(SDK)/sdk/hp_math.h $(SDK)/sdk/hp_string.h $(SDK)/sdk/hp_fonts.h \
-	    $(SDK)/sdk/hp_sys.h $(SDK)/sdk/hp_fixmath.h $(SDK)/sdk/hp_random.h $(SDK)/sdk/hp_codec.h $(SDK)/sdk/hp_gui.h \
-	    $(SDK)/sdk/hp_icall.h $(SDK)/sdk/hp_image.h \
+	    calc/main.py $(SDK)/sdk/include/prime.h $(SDK)/sdk/include/stdbool.h \
+	    $(SDK)/sdk/include/hp_gfx.h $(SDK)/sdk/include/hp_input.h $(SDK)/sdk/include/hp_math.h $(SDK)/sdk/include/hp_string.h $(SDK)/sdk/include/hp_fonts.h \
+	    $(SDK)/sdk/include/hp_sys.h $(SDK)/sdk/include/hp_fixmath.h $(SDK)/sdk/include/hp_random.h $(SDK)/sdk/include/hp_codec.h $(SDK)/sdk/include/hp_gui.h \
+	    $(SDK)/sdk/include/hp_icall.h $(SDK)/sdk/include/hp_image.h \
 	    primetcc.hpappdir/
 	@echo "==> 已部署到 primetcc.hpappdir/"
 
