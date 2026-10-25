@@ -1,0 +1,6 @@
+TCC entry: args=13
+P:creating thread
+P:thread created
+T1:thread started
+T3:main returned 0
+TCC_DONE:0

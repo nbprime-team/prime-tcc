@@ -1,0 +1,10 @@
+RUN begin: state=300806f8 dbg=31ffbfd8 prog=31003fa0
+install OK: saved=1 hookfn=3005736c slot=e51ff004 3005736c
+  armed=1 calls=0 drops=0 inhook=0 queue=0
+RUN end: teardown ok (slot restored)
+EXIT: a8=31ffbfd8 ip=31ffc000 lr=dead0000 r4=300806f8 r5=0 r6=0 r7=31ffbfd8 sp=31004018
+RUN begin: state=300806f8 dbg=31ffbfd8 prog=31007ff0
+install OK: saved=1 hookfn=3005736c slot=e51ff004 3005736c
+  armed=1 calls=0 drops=0 inhook=2 queue=0
+RUN end: teardown ok (slot restored)
+EXIT: a8=31ffbfd8 ip=31ffc000 lr=dead0000 r4=300806f8 r5=0 r6=0 r7=31ffbfd8 sp=31008068
