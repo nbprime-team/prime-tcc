@@ -51,7 +51,7 @@ else
 SYSINC  := -isystem /usr/lib/arm-none-eabi/include
 endif
 CFLAGS  := $(ARCH) -ffreestanding -fPIC -O0 -g -Wall \
-           -I$(TOPDIR)/hp/include -I$(TOPDIR)/hp -I$(SDK)/sdk/include -I$(TCCSRC) \
+           -I$(SDK)/sdk/include/tcc -I$(SDK)/sdk/include/tcc/sys -I$(SDK)/sdk/include -I$(TCCSRC) \
            -DTCC_TARGET_ARM -DCONFIG_TCC_STATIC -DTCC_ARM_EABI -DTCC_ARM_SOFT_FLOAT -DHP_PRIME $(SYSINC)
 ASFLAGS := -mcpu=arm926ej-s
 
@@ -64,17 +64,20 @@ TCC_OBJS := $(patsubst %.c,$(OUTDIR)/obj/%.o,$(TCC_SRCS))
 HP_OBJS := $(OUTDIR)/obj/hp_svc.o $(OUTDIR)/obj/hp_libc.o $(OUTDIR)/obj/hp_vsnprintf.o $(OUTDIR)/obj/hp_input_svc.o
 
 # PROBE=<file.c> links an extra probe object into $(OUTDIR)/tcc.elf (debug rounds).
-# Use with HP_SVC=hp/hp_svc_test5.s (probe crt0 that bl hp_probe5).
+# Use with HP_SVC=hp_svc_test5.s (probe crt0 that bl hp_probe5).
 PROBE ?=
 ifneq ($(PROBE),)
 PROBE_OBJS := $(OUTDIR)/obj/probe.o
-$(OUTDIR)/obj/probe.o: $(PROBE) hp/hp_libc.h | $(OUTDIR)/obj
+$(OUTDIR)/obj/probe.o: $(PROBE) $(SDK)/sdk/include/tcc/hp_libc.h | $(OUTDIR)/obj
 	$(ARMCC) $(CFLAGS) -c $(PROBE) -o $@
 else
 PROBE_OBJS :=
 endif
 
 all: $(OUTDIR)/tcc.elf $(OUTDIR)/rt_core.o $(OUTDIR)/rt_math.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o
+
+# 只构建 TCC 编译出的用户程序所需运行时（不需要 TCC 自身源码，可单独验证）
+runtime: $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_core.o $(OUTDIR)/rt_math.o $(OUTDIR)/rt_aeabi.o
 
 # ---------- TCC binary for the calculator ----------
 $(OUTDIR)/tcc.elf: $(TCC_OBJS) $(HP_OBJS) $(PROBE_OBJS)
@@ -92,22 +95,22 @@ $(OUTDIR)/obj/%.o: $(TCCSRC)/%.c $(TCCSRC)/config.h | $(OUTDIR)/obj
 # auto-deps ($(OUTDIR)/obj/tcc.d) must be included to rebuild on backend changes
 -include $(OUTDIR)/obj/tcc.d
 
-# HP_SVC selects the crt0: hp/hp_svc.s (normal) or hp/hp_svc_test.s
-# (minimal startup test for on-calculator debugging).
-HP_SVC ?= hp/hp_svc.s
+# HP_SVC selects the crt0: hp_svc.s (normal) or hp_svc_test.s
+# (minimal startup test for on-calculator debugging). 两者均在 toolchain/sdk/platform/。
+HP_SVC ?= $(SDK)/sdk/platform/hp_svc.s
 
 $(OUTDIR)/obj/hp_svc.o: $(HP_SVC) | $(OUTDIR)/obj
 	$(ARMAS) $(ASFLAGS) $(HP_SVC) -o $@
 
-$(OUTDIR)/obj/hp_libc.o: hp/hp_libc.c hp/hp_libc.h | $(OUTDIR)/obj
-	$(ARMCC) $(CFLAGS) -c hp/hp_libc.c -o $@
+$(OUTDIR)/obj/hp_libc.o: $(SDK)/sdk/src/hp_libc.c $(SDK)/sdk/include/tcc/hp_libc.h | $(OUTDIR)/obj
+	$(ARMCC) $(CFLAGS) -c $(SDK)/sdk/src/hp_libc.c -o $@
 
-$(OUTDIR)/obj/hp_vsnprintf.o: hp/hp_vsnprintf.c hp/hp_libc.h | $(OUTDIR)/obj
-	$(ARMCC) $(CFLAGS) -c hp/hp_vsnprintf.c -o $@
+$(OUTDIR)/obj/hp_vsnprintf.o: $(SDK)/sdk/src/hp_vsnprintf.c $(SDK)/sdk/include/tcc/hp_libc.h | $(OUTDIR)/obj
+	$(ARMCC) $(CFLAGS) -c $(SDK)/sdk/src/hp_vsnprintf.c -o $@
 
 # RESIDENT input-hook service: compiled INTO $(OUTDIR)/tcc.elf so the firmware
 # get_event slot always points at never-freed code (see $(SDK)/sdk/src/hp_input_svc.c)
-$(OUTDIR)/obj/hp_input_svc.o: $(SDK)/sdk/src/hp_input_svc.c $(SDK)/sdk/include/hp_input_svc.h hp/hp_libc.h | $(OUTDIR)/obj
+$(OUTDIR)/obj/hp_input_svc.o: $(SDK)/sdk/src/hp_input_svc.c $(SDK)/sdk/include/tcc/hp_input_svc.h $(SDK)/sdk/include/tcc/hp_libc.h | $(OUTDIR)/obj
 	$(ARMCC) $(CFLAGS) -c $(SDK)/sdk/src/hp_input_svc.c -o $@
 
 # TCC's configure generates config.h for the ARM target (one-time).
@@ -124,7 +127,7 @@ RT_CORE_SRCS := $(SDK)/sdk/src/hp_rt.c $(SDK)/sdk/src/hp_gfx.c $(SDK)/sdk/src/hp
 	$(SDK)/sdk/src/hp_math.c $(SDK)/sdk/src/hp_string.c \
 	$(SDK)/sdk/src/hp_fonts.c $(SDK)/sdk/src/hp_fonts_data.c $(SDK)/sdk/src/hp_sys.c \
 	$(SDK)/sdk/src/hp_fixmath.c $(SDK)/sdk/src/hp_random.c $(SDK)/sdk/src/hp_codec.c \
-	$(SDK)/sdk/src/hp_gui.c $(SDK)/sdk/src/hp_icall.c
+	$(SDK)/sdk/src/hp_gui.c $(SDK)/sdk/src/hp_icall.c $(SDK)/sdk/src/hp_image.c
 RT_CORE_HDRS := $(SDK)/sdk/include/hp_gfx.h $(SDK)/sdk/include/hp_input.h $(SDK)/sdk/include/hp_math.h \
 	$(SDK)/sdk/include/hp_string.h $(SDK)/sdk/include/hp_fixmath.h $(SDK)/sdk/include/hp_random.h \
 	$(SDK)/sdk/include/hp_codec.h $(SDK)/sdk/include/hp_gui.h $(SDK)/sdk/include/hp_icall.h
@@ -224,4 +227,4 @@ deploy:
 	    primetcc.hpappdir/
 	@echo "==> 已部署到 primetcc.hpappdir/"
 
-.PHONY: all host test clean deploy
+.PHONY: all runtime host test clean deploy
