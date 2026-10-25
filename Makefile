@@ -220,7 +220,9 @@ deploy:
 	    primetcc.hpappdir/code.elf primetcc.hpappdir/probe5.bin \
 	    primetcc.hpappdir/stage.txt
 	@cp $(OUTDIR)/tcc.elf $(OUTDIR)/rt_core.o $(OUTDIR)/rt_svc.o $(OUTDIR)/rt_aeabi.o $(OUTDIR)/rt_math.o \
-	    calc/main.py $(SDK)/sdk/include/prime.h $(SDK)/sdk/include/stdbool.h \
+	    calc/main.py calc/moreprint.py calc/icon.png \
+	    calc/primetcc.hpapp calc/primetcc.hpappnote calc/primetcc.hpappprgm \
+	    $(SDK)/sdk/include/prime.h $(SDK)/sdk/include/stdbool.h \
 	    $(SDK)/sdk/include/hp_gfx.h $(SDK)/sdk/include/hp_input.h $(SDK)/sdk/include/hp_math.h $(SDK)/sdk/include/hp_string.h $(SDK)/sdk/include/hp_fonts.h \
 	    $(SDK)/sdk/include/hp_sys.h $(SDK)/sdk/include/hp_fixmath.h $(SDK)/sdk/include/hp_random.h $(SDK)/sdk/include/hp_codec.h $(SDK)/sdk/include/hp_gui.h \
 	    $(SDK)/sdk/include/hp_icall.h $(SDK)/sdk/include/hp_image.h \

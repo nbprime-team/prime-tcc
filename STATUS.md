@@ -37,8 +37,9 @@
 
 1. **运行时与头文件的唯一权威源是 `toolchain/sdk/`**；`prime-tcc` 只放 TCC 自身源码与部署脚本，
    构建时直接引用该目录（见 `Makefile` 的 `SDK` 变量）。
-2. `primetcc.hpappdir/` 是**部署快照**：
-   - 入库：`main.py`、`moreprint.py`、`icon.png`、`primetcc.hpapp*`；
-   - 产物（`tcc.elf`、`rt_*.o`）与头文件由 `make deploy` 从 `prebuilt/`、`toolchain/sdk/include/`
-     拷入，**不在仓库中自带副本**。
+2. `primetcc.hpappdir/` 是**纯构建产物，整体不入库**（`.gitignore` 已忽略整目录）：
+   - 包内每个文件都有仓库内的源：`tcc.elf`、`rt_*.o` 来自 `prebuilt/`；`main.py`、
+     `moreprint.py`、`icon.png`、`primetcc.hpapp*` 来自 `calc/`；`prime.h`、`stdbool.h`、
+     `hp_*.h` 来自 `toolchain/sdk/include/`；
+   - 重建：`make deploy`；现成的完整包见 GitHub Release `v1`（`primetcc.hpappdir.zip`）。
 3. ABI 与契约约定见 `API_ABI_CONTRACT.md`；用户可见 API 见 `API.md`。

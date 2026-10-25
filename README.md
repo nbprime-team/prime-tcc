@@ -28,16 +28,18 @@ prime-tcc/
 │                               C 核心库经 `SDK ?= ../toolchain` 从 toolchain/sdk 引用
 ├── hp/                         TCC 本体的 Prime 侧支撑（用户程序头已移至 toolchain/sdk）
 │   ├── hp_libc.h/.c  hp_vsnprintf.c  hp_svc.s  include/   [缺失]
-├── calc/main.py                [已就位] 计算器端加载器
-├── src/tinycc-mob/             [缺失] TCC 源码（含移植补丁）
-├── tests/                      [缺失] harness.py / emu_arm2.py / restart_check.py
+├── calc/                       计算器端脚本与包元数据（部署源）
+│   ├── main.py                 加载器
+│   └── moreprint.py  icon.png  primetcc.hpapp / .hpappnote / .hpappprgm
+├── src/tinycc-mob/             TCC 源码（含移植补丁）
+├── tests/                      仿真与回归脚本（harness.py / emu_arm2.py / restart_check.py …）
 ├── examples/                   独立示例（8 个 .c）
-├── primetcc.hpappdir/          部署目录（main.py、moreprint.py、prime.h、stdbool.h、
-│                               hp_*.h、icon.png、primetcc.hpapp*；tcc.elf 与
-│                               rt_*.o 由 `make deploy` 从 prebuilt/ 拷入）
-└── prebuilt/                   预编译产物（集中于此）
+└── prebuilt/                   预编译产物（集中于此，入库）
     ├── tcc.elf                 TCC 编译器本体
     └── rt_core.o / rt_math.o / rt_svc.o / rt_aeabi.o   运行时与软浮点辅助
+
+primetcc.hpappdir/              构建产物（不入库）：`make deploy` 从 prebuilt/、calc/ 与
+                                toolchain/sdk 重新生成；现成可上传包见 GitHub Release v1
 ```
 
 C 核心库（用户程序头与运行时实现，如 `hp_rt.c`、`hp_gfx.h`）位于
@@ -45,8 +47,8 @@ C 核心库（用户程序头与运行时实现，如 `hp_rt.c`、`hp_gfx.h`）�
 `RT_CORE_*` 与 `deploy` 均从该目录取用。
 
 构建产物一律输出到 `prebuilt/`（`OUTDIR`），中间产物在 `prebuilt/obj/`
-（不入库，见 `.gitignore`）；`make deploy` 从 `prebuilt/` 与 `toolchain/sdk/`
-拷贝到 `primetcc.hpappdir/`。
+（不入库，见 `.gitignore`）；`make deploy` 从 `prebuilt/`、`calc/` 与 `toolchain/sdk/`
+生成 `primetcc.hpappdir/`（该目录整体不入库）。
 
 ## 构建
 
@@ -67,9 +69,23 @@ make all                             # 需先补齐 STATUS.md §2 的源码
 
 ## 安装到计算器
 
-把 `primetcc.hpappdir/` 拷入计算器 `C:\DATA\`，在 Python 应用中 `import main`
-（或按**清除**金刚键自动运行）。目录内平铺 `tcc.elf`、`main.py`、`rt_*.o`、
-`prime.h`、`hp_*.h`；`code.c`/`code.elf` 在运行时生成，`tcc.slot` 记录常驻 TCC 地址。
+现成的完整包发布在 **GitHub Release `v1`**（资产 `primetcc.hpappdir.zip`），解压后即
+`primetcc.hpappdir/`，整个目录拷入计算器 `C:\DATA\`：
+
+```bash
+gh release download v1 -R nbprime-team/prime-tcc -p 'primetcc.hpappdir.zip' -D .
+unzip -o primetcc.hpappdir.zip      # -> primetcc.hpappdir/
+```
+
+也可以在本地生成（产物已入库时无需先 `make all`）：
+
+```bash
+make deploy                         # -> primetcc.hpappdir/（整体不入库）
+```
+
+在 Python 应用中 `import main`（或按**清除**金刚键自动运行）。目录内平铺 `tcc.elf`、
+`main.py`、`rt_*.o`、`prime.h`、`hp_*.h`；`code.c`/`code.elf` 在运行时生成，
+`tcc.slot` 记录常驻 TCC 地址。
 
 ## 已知限制
 

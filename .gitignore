@@ -6,11 +6,8 @@ prebuilt/obj/
 # configure 生成
 src/tinycc-mob/config.h
 
-# 实机应用包目录里的部署产物：由 `make deploy` 从 prebuilt/ 与 toolchain/sdk
-# 拷贝，不自带副本
-primetcc.hpappdir/tcc.elf
-primetcc.hpappdir/rt_*.o
-primetcc.hpappdir/code.c
-primetcc.hpappdir/code.elf
-primetcc.hpappdir/probe5.bin
-primetcc.hpappdir/stage.txt
+# 实机应用包目录：整体是构建产物，由 `make deploy` 从 prebuilt/、calc/ 与
+# toolchain/sdk 重新生成，不入库。
+# 现成的完整包见 GitHub Release（tag v1，资产 primetcc.hpappdir.zip）：
+#   gh release download v1 -R nbprime-team/prime-tcc -p 'primetcc.hpappdir.zip' -D .
+primetcc.hpappdir/
