@@ -12,7 +12,7 @@
 | `make runtime`（只构建用户程序运行时，不需要 TCC 源码） | ✅ 可构建 |
 | `make deploy`（把产物与头拷入 `primetcc.hpappdir/`） | ✅ 可用 |
 | `make host`（host 侧 TCC，实验用） | 未验证 |
-| `make test` | 未提供（无 `tests/`） |
+| `make test` | 已收入 `tests/`（`harness.py`、`emu_arm2.py`、`restart_check.py` 等 33 个）；需仿真环境 |
 
 **构成**（运行时与头文件**全部取自 `toolchain/sdk/`，本仓库不保留副本**）：
 
